@@ -300,8 +300,8 @@ contains    !> MODULE PROCEDURES START HERE
 !>--- populate parameters
     if (loadnew) then
       !> call xhcff with verbosity turned off
-      call xhcff_setup(mol,calc%xhcff,calc%extpressure,calc%ngrid,calc%proberad, &
-      &                calc%vdwset,pr,calc%prch,iostatus)
+      call xhcff_setup(mol,calc%xhcff,calc%extpressure,calc%ngrid,calc%proberad, calc%scaling, &
+      &                calc%vdwset,pr, calc%plvl, calc%prch,iostatus)
     end if
     !$omp end critical
     if (iostatus /= 0) return
