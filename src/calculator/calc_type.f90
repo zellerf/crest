@@ -138,8 +138,10 @@ module calc_type
 
     !> XHCFF data
     integer :: ngrid = 230             !>  lebedev grid points per atom
+    integer :: plvl = 0           !>  printlevel of xhcff calculator
     real(wp) :: extpressure = 0.0_wp   !>  hydorstatic pressure in Gpa
     real(wp) :: proberad = 1.5_wp      !>  proberadius in Angstroem
+    real(wp) :: scaling = 1.0_wp       !>  scaling factor for vdw radii
     integer :: vdwset = 0              !>  Set of VDW radii to use in sas calculation -> default D3, 1 -> Bondi
     type(xhcff_calculator),allocatable :: xhcff
 
@@ -353,6 +355,8 @@ contains  !>--- Module routines start here
     self%ngrid = 230
     self%extpressure = 0.0_wp
     self%proberad = 1.5_wp
+    self%plvl = 0
+    self%scaling = 1.0_wp
 
     self%ONIOM_highlowroot = 0
     self%ONIOM_id = 0

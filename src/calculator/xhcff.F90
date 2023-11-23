@@ -46,21 +46,23 @@ contains  !>--- Module routines start here
 !========================================================================================!
 !========================================================================================!
 
-  subroutine xhcff_setup(mol, xhcff, pressure, gridpts, proberad, vdwset, pr, iunit, iostatus)
+  subroutine xhcff_setup(mol, xhcff, pressure, gridpts, proberad, scaling, vdwset, pr, plvl, iunit, iostatus)
     implicit none
     type(coord),intent(in)  :: mol
-    real(wp), intent(in) :: pressure !> pressure
+    real(wp), intent(in) :: pressure !> pressure in gpa
     integer, intent(in) :: gridpts
-    real(wp), intent(in) :: proberad
-    integer, intent(in) :: vdwset
+    real(wp), intent(in) :: proberad !> proberadius to model sas in Angstrom
+    real(wp), intent(in) :: scaling !> scale vdw radii
+    integer, intent(in) :: vdwset !> choose vdwset for surface calculation
     type(xhcff_calculator),intent(inout) :: xhcff
     integer, intent(inout) :: iostatus
     logical, intent(in) :: pr
+    integer, intent(in) :: plvl !> printlvl
     integer,intent(in) :: iunit
 #ifdef WITH_XHCFF
     !> initialize XHCFF
     call xhcff%init(mol%nat,mol%at,mol%xyz, &
-     & pressure, gridpts, proberad, verbose=pr,iunit=iunit,vdwset=vdwset,iostat=iostatus)
+     & pressure, gridpts, proberad, printlevel=plvl, scaling=scaling, verbose=pr,iunit=iunit,vdwset=vdwset,iostat=iostatus)
 
 #else /* WITH_XHCFF */
     write (stdout,*) 'Error: Compiled without XHCFF-lib support!'

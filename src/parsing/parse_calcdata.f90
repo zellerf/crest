@@ -204,6 +204,8 @@ contains !> MODULE PROCEDURES START HERE
       job%extpressure = val
     case ('proberad')
       job%proberad = val
+    case ('scaling')
+      job%scaling = val
     end select
     return
   end subroutine parse_setting_float
@@ -227,6 +229,8 @@ contains !> MODULE PROCEDURES START HERE
       job%ngrid = val
     case ('vdwset')
       job%vdwset = val
+    case ('printlevel')
+      job%plvl = val
     end select
     return
   end subroutine parse_setting_int
