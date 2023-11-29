@@ -132,13 +132,18 @@ contains    !> MODULE PROCEDURES START HERE
         open (unit=calc%prch,file=cpath)
 
       else
-        write (calc%prch,'(/,a)') repeat('%',50)
-        write (calc%prch,'(a)') '> new calculation'
-        write (calc%prch,'(a,/)') repeat('%',50)
+        !> TODO make properly
+        !> reduce prinout for xhcff voume
+        !write (calc%prch,'(/,a)') repeat('%',50)
+        !write (calc%prch,'(a)') '> new calculation'
+        !write (calc%prch,'(a,/)') repeat('%',50)
       end if
         deallocate (cpath)
 
-      call api_print_input_structure(pr,calc%prch,mol)
+      !> TODO make properly
+      !> reduce prinout for xhcff voume
+       ! call api_print_input_structure(pr,calc%prch,mol)
+
     end if
 
   end subroutine api_handle_output

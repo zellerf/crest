@@ -723,9 +723,9 @@ contains  !>--- Module routines start here
         self%calcs(newid)%weight = 0.0_wp
 
         !> Check if the ONIOM fragment has a charge attached!
-        if(allocated(self%ONIOM%fragment(i)%chrg))then
-          self%calcs(newid)%chrg = self%ONIOM%fragment(i)%chrg
-        endif 
+        !if(allocated(self%ONIOM%fragment(i)%chrg))then
+        !  self%calcs(newid)%chrg = self%ONIOM%fragment(i)%chrg
+        !endif
 
       end do
     end do

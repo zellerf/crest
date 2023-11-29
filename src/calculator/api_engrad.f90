@@ -314,7 +314,7 @@ contains    !> MODULE PROCEDURES START HERE
 !>--- printout
     if (pr) then
       !> the xhcff_sp call includes the printout within xhcff-lib
-      call api_print_e_grd(pr,calc%prch,mol,energy,grad)
+      !call api_print_e_grd(pr,calc%prch,mol,energy,grad)
     end if
 
 !>--- postprocessing, getting other data

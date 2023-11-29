@@ -35,7 +35,7 @@ subroutine crest_numhess(env,tim)
   use hessian_tools
   use gradreader_module
   use xtb_sc
-  use oniom_hessian
+!  use oniom_hessian
   implicit none
 
   type(systemdata),intent(inout) :: env
@@ -187,29 +187,29 @@ subroutine crest_numhess(env,tim)
   else
 !========================================================================================!
 !> ONIOM version
-    write (stdout,*)
-    flush (stdout)
-
-    allocate (ohess(nat3,nat3),source=0.0_wp)
-    allocate (ofreq(nat3),source=0.0_wp)
-    call ONIOM_calc_hessians(mol,calc,ohess)
+ !   write (stdout,*)
+ !   flush (stdout)
+!
+!    allocate (ohess(nat3,nat3),source=0.0_wp)
+!    allocate (ofreq(nat3),source=0.0_wp)
+!    call ONIOM_calc_hessians(mol,calc,ohess)
 
     !>-- Prints Hessian (pure 2nd derivatives in atomic units)
-    call print_hessian(ohess(:,:),nat3,'','numhess')
+!    call print_hessian(ohess(:,:),nat3,'','numhess')
 
     !>-- Projects and mass-weights the Hessian (M^1/2*H*M^1/2)
-    call prj_mw_hess(mol%nat,mol%at,nat3,mol%xyz,ohess(:,:))
+ !   call prj_mw_hess(mol%nat,mol%at,nat3,mol%xyz,ohess(:,:))
 
     !>-- Computes the Frequencies (in cm^-1)
-    call frequencies(mol%nat,mol%at,mol%xyz,nat3,calc,ohess(:,:),ofreq(:),io)
+  !  call frequencies(mol%nat,mol%at,mol%xyz,nat3,calc,ohess(:,:),ofreq(:),io)
 
     !>-- Prints vibspectrum with artifical intensities
-    call print_vib_spectrum(mol%nat,mol%at,nat3,mol%xyz,ofreq(:), &
-    &    '','vibspectrum')
+   ! call print_vib_spectrum(mol%nat,mol%at,nat3,mol%xyz,ofreq(:), &
+    !&    '','vibspectrum')
 
     !>-- Prints g98.out format file
-    call print_g98_fake(mol%nat,mol%at,nat3,mol%xyz,ofreq(:),ohess(:,:), &
-    &    '','g98.out')
+!    call print_g98_fake(mol%nat,mol%at,nat3,mol%xyz,ofreq(:),ohess(:,:), &
+ !   &    '','g98.out')
 
 
 !========================================================================================!
