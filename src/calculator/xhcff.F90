@@ -21,19 +21,19 @@ module xhcff_api
   use iso_fortran_env,only:wp => real64,stdout => output_unit
   use strucrd
 #ifdef WITH_XHCFF
-  use xhcff_interface
+  use pv_interface
 #endif
   implicit none
   private
 
 #ifndef WITH_XHCFF
   !> this is a placeholder if no xhcff module is used!
-  type :: xhcff_calculator
+  type :: pv_calculator
     integer :: id = 0
-  end type xhcff_calculator
+  end type pv_calculator
 #endif
 
-  public :: xhcff_calculator  !> if compiled without(!!!) -DWITH_XHCFF=true this will export
+  public :: pv_calculator  !> if compiled without(!!!) -DWITH_XHCFF=true this will export
                         !> the placeholder from above. Otherwise it will re-export
                         !> the type from xhcff_interface
 
@@ -54,7 +54,7 @@ contains  !>--- Module routines start here
     real(wp), intent(in) :: proberad !> proberadius to model sas in Angstrom
     real(wp), intent(in) :: scaling !> scale vdw radii
     integer, intent(in) :: vdwset !> choose vdwset for surface calculation
-    type(xhcff_calculator),intent(inout) :: xhcff
+    type(pv_calculator),intent(inout) :: xhcff
     integer, intent(inout) :: iostatus
     logical, intent(in) :: pr
     integer, intent(in) :: plvl !> printlvl
@@ -83,7 +83,7 @@ contains  !>--- Module routines start here
     implicit none
     !> INPUT
     type(coord),intent(in)  :: mol
-    type(xhcff_calculator),intent(inout) :: xhcff
+    type(pv_calculator),intent(inout) :: xhcff
     !> OUTPUT
     real(wp),intent(out) :: energy
     real(wp),intent(out) :: gradient(3,mol%nat)
@@ -109,7 +109,7 @@ contains  !>--- Module routines start here
   subroutine xhcff_print(iunit,xhcff)
     implicit none
     integer,intent(in) :: iunit
-    type(xhcff_calculator),intent(in) :: xhcff
+    type(pv_calculator),intent(in) :: xhcff
 #ifdef WITH_XHCFF
     call xhcff%info(iunit)
 #endif

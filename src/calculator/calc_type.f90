@@ -25,7 +25,7 @@ module calc_type
   use tblite_api
   use gfn0_api
   use gfnff_api,only:gfnff_data
-  use xhcff_api,only:xhcff_calculator
+  use xhcff_api,only:pv_calculator
 !>--- other types
   use orca_type
   use lwoniom_module
@@ -143,7 +143,7 @@ module calc_type
     real(wp) :: proberad = 1.5_wp      !>  proberadius in Angstroem
     real(wp) :: scaling = 1.0_wp       !>  scaling factor for vdw radii
     integer :: vdwset = 0              !>  Set of VDW radii to use in sas calculation -> default D3, 1 -> Bondi
-    type(xhcff_calculator),allocatable :: xhcff
+    type(pv_calculator),allocatable :: xhcff
 
     !> ONIOM fragment IDs
     integer :: ONIOM_highlowroot = 0 
