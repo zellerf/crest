@@ -132,18 +132,13 @@ contains    !> MODULE PROCEDURES START HERE
         open (unit=calc%prch,file=cpath)
 
       else
-        !> TODO make properly
-        !> reduce prinout for xhcff voume
-        !write (calc%prch,'(/,a)') repeat('%',50)
-        !write (calc%prch,'(a)') '> new calculation'
-        !write (calc%prch,'(a,/)') repeat('%',50)
+        write (calc%prch,'(/,a)') repeat('%',50)
+        write (calc%prch,'(a)') '> new calculation'
+        write (calc%prch,'(a,/)') repeat('%',50)
       end if
         deallocate (cpath)
 
-      !> TODO make properly
-      !> reduce prinout for xhcff voume
-       ! call api_print_input_structure(pr,calc%prch,mol)
-
+      call api_print_input_structure(pr,calc%prch,mol)
     end if
 
   end subroutine api_handle_output
@@ -305,7 +300,20 @@ contains    !> MODULE PROCEDURES START HERE
     if (.not.allocated(calc%ff_dat)) then
       allocate (calc%ff_dat)
       loadnew = .true.
-    end if
+
+      !> some restart options
+      calc%ff_dat%restart = calc%restart
+      if(allocated(calc%restartfile))then
+        calc%ff_dat%restartfile = calc%restartfile
+      endif
+      if(allocated(calc%refgeo))then
+        calc%ff_dat%refgeo = calc%refgeo
+      endif
+      if(allocated(calc%parametrisation))then
+        calc%ff_dat%refgeo = calc%parametrisation
+      endif
+
+    endif
     if (allocated(calc%solvent)) then
       if (.not.allocated(calc%ff_dat%solvent)) then
         allocate (calc%ff_dat%solvent,source=trim(calc%solvent))

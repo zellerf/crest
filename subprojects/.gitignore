@@ -4,15 +4,16 @@ dftd4.wrap
 mstore.wrap
 multicharge.wrap
 s-dftd3.wrap
-test-drive.wrap
 mctc-lib.wrap
 xhcff
-lwoniom
+lammps*
 
+!lwoniom
 !gfn0
 !toml-f
 !gfnff
 !tblite
+!test-drive
 
 !packagefiles
 !packagefiles/tblite

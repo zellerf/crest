@@ -33,8 +33,6 @@ module dynamics_module
   !======================================================================================!
   !--- private module variables and parameters
   private
-  integer :: i,j,k,l,ich,och,io
-  logical :: ex
 
   !>--- some constants and name mappings
   real(wp),parameter :: amutoau = amutokg*kgtome
@@ -127,7 +125,7 @@ contains  !> MODULE PROCEDURES START HERE
 
     type(coord) :: mol          !> molecule data (should be in Bohr)
     type(mddata) :: dat         !> MD data
-    type(calcdata) :: calc      !> calculation control
+    type(calcdata),target :: calc      !> calculation control
     logical,intent(in) :: pr    !> printout control
     integer,intent(out) :: term !> termination status
 
@@ -154,7 +152,7 @@ contains  !> MODULE PROCEDURES START HERE
     character(len=256) :: commentline
     integer :: i,j,k,l,ich,och,io
     integer :: dcount,printcount
-    logical :: ex
+    logical :: ex,fail
 
     call initsignal()
 
@@ -164,8 +162,15 @@ contains  !> MODULE PROCEDURES START HERE
     term = 0
     tstep_au = dat%tstep*fstoau
     nfreedom = 3*mol%nat
-!> TODO fix frozen-atom degrees of freedom and SHAKE
+    if(calc%nfreeze > 0)then
+      nfreedom = nfreedom - 3*calc%nfreeze
+    endif
     if (dat%shake) then
+      if(calc%nfreeze > 0)then
+        dat%shk%freezeptr => calc%freezelist
+      else
+        nullify(dat%shk%freezeptr)
+      endif
       call init_shake(mol%nat,mol%at,mol%xyz,dat%shk,pr)
       dat%nshake = dat%shk%ncons
       nfreedom = nfreedom-dat%nshake
@@ -201,10 +206,12 @@ contains  !> MODULE PROCEDURES START HERE
       write (*,'('' dt /fs             :'',f10.2)') dat%tstep
       write (*,'('' temperature /K     :'',f10.2)') dat%tsoll
       write (*,'('' max steps          :'',i10  )') dat%length_steps
-      !write (*,'('' block length (av.) :'',i6  )') blockl
+      write (*,'('' block length (av.) :'',i10  )') dat%blockl
       write (*,'('' dumpstep(trj) /fs  :'',f10.2,i6)') dat%dumpstep,dat%sdump
-      !write (*,'('' dumpstep(coords)/fs:'',f8.2,i6)') dump_md,cdump0
       write (*,'('' # deg. of freedom  :'',i10  )') nfreedom
+      if(calc%nfreeze > 0)then
+      write (*,'('' # frozen atoms     :'',i10  )') calc%nfreeze
+      endif
       call thermostatprint(dat,pr)
       write (*,'('' SHAKE constraint   :'',8x,l)') dat%shake
       if (dat%shake) then
@@ -243,7 +250,14 @@ contains  !> MODULE PROCEDURES START HERE
       f = 2.0_wp
     end if
     edum = f*dat%tsoll*0.5_wp*kB*float(nfreedom)
-    call mdinitu(mol,dat,velo,mass,edum,pr)
+    if(.not.dat%restart .or. .not.allocated(dat%restartfile))then 
+     call mdinitu(mol,dat,velo,mass,edum,pr)
+    else
+     call rdmdrestart(mol,dat,velo,fail)
+     if(fail)then
+        call mdinitu(mol,dat,velo,mass,edum,pr)
+     endif
+    endif 
     call ekinet(mol%nat,velo,mass,ekin)
     if(calc%nfreeze > 0)then
        do i = 1,mol%nat
@@ -498,6 +512,8 @@ contains  !> MODULE PROCEDURES START HERE
     integer,intent(out) :: iostatus
     real(wp) :: dum
     integer :: idum
+    integer :: i,j,k,l,ich,och,io
+    logical :: ex
 
     iostatus = 0
 
@@ -528,6 +544,7 @@ contains  !> MODULE PROCEDURES START HERE
     integer,intent(in) :: n
     real(wp),intent(in) :: velo(3,n),mass(n)
     real(wp),intent(out) :: e
+    integer :: i
     e = 0.0_wp
     do i = 1,n
       e = e+mass(i)*(velo(1,i)**2+velo(2,i)**2+velo(3,i)**2)
@@ -546,7 +563,8 @@ contains  !> MODULE PROCEDURES START HERE
     real(wp),intent(in) :: epot
     real(wp),intent(in) :: temp
     logical,intent(in) :: pr
-
+    integer :: i,j,k,l,ich,och,io
+    logical :: ex
     integer :: nreg
     real(wp) :: bave,bavt,slope
 
@@ -579,8 +597,9 @@ contains  !> MODULE PROCEDURES START HERE
     subroutine regress(n1,n2,rege,slope)
       implicit none
       real(wp) :: rege(*),slope
-      integer :: n1,n2,n,i
+      integer :: n1,n2,n
       real(wp) :: sx,sy,sxx,sxy,x
+      integer :: i,j,k,l,ich,och,io
 
       n = n2-n1+1
       sx = 0.0_wp
@@ -632,7 +651,8 @@ contains  !> MODULE PROCEDURES START HERE
     type(coord) :: mol
     type(mddata) :: dat
     real(wp),intent(in) :: velo(3,mol%nat)
-    integer :: io,ich
+    integer :: i,j,k,l,ich,och,io
+    logical :: ex
     character(len=256) :: atmp
     if (.not.allocated(dat%restartfile)) then
       write (atmp,'(a,i0,a)') 'crest_',dat%md_index,'.mdrestart'
@@ -656,7 +676,8 @@ contains  !> MODULE PROCEDURES START HERE
     logical,intent(out) :: fail
     real(wp) :: dum
     character(len=256) :: atmp
-    integer :: io,ich
+    integer :: i,j,k,l,ich,och,io
+    logical :: ex
 
     fail = .false.
 
@@ -755,11 +776,11 @@ contains  !> MODULE PROCEDURES START HERE
 
   subroutine thermostating(mol,dat,t,scal)
     implicit none
-
     type(coord) :: mol
     type(mddata) :: dat
     real(wp),intent(in) :: t
     real(wp),intent(out) :: scal
+    integer :: i,j,k,l,ich,och,io
 
     scal = 1.0_wp
 
@@ -781,6 +802,7 @@ contains  !> MODULE PROCEDURES START HERE
     implicit none
     type(mddata) :: dat
     logical,intent(in) :: pr
+    integer :: i,j,k,l,ich,och,io
 
     if (.not.pr) return
     if (dat%thermostat) then
@@ -1167,5 +1189,6 @@ contains  !> MODULE PROCEDURES START HERE
     end if
 
   end subroutine md_defaults_fallback
+!========================================================================================!
 !========================================================================================!
 end module dynamics_module

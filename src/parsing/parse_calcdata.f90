@@ -30,6 +30,8 @@ module parse_calcdata
   use dynamics_module
   use gradreader_module,only:gradtype,conv2gradfmt
   use tblite_api,only:xtblvl
+  use strucrd,only:get_atlist,coord
+  use axis_module
 
   use parse_block,only:datablock
   use parse_keyvalue,only:keyvalue,valuetypes
@@ -83,8 +85,9 @@ contains !> MODULE PROCEDURES START HERE
 !========================================================================================!
 !========================================================================================!
 
-  subroutine parse_calculation_data(calc,dict,included)
+  subroutine parse_calculation_data(env,calc,dict,included)
     implicit none
+    type(systemdata) :: env
     type(calcdata) :: calc
     type(root_object) :: dict
     type(datablock) :: blk
@@ -92,16 +95,19 @@ contains !> MODULE PROCEDURES START HERE
     type(constraint) :: newcstr
     integer :: i,j,k,l
     logical,intent(out) :: included
+    type(coord) :: moltmp
 
     included = .false.
     call calc%reset()
+    call env%ref%to(moltmp)
+    call axis(moltmp%nat,moltmp%at,moltmp%xyz) 
 
     do i = 1,dict%nblk
       call blk%deallocate()
       blk = dict%blk_list(i)
       if (blk%header == 'calculation') then
         included = .true.
-        call parse_calcdat(blk,calc)
+        call parse_calcdat(env,blk,calc)
 
       else if (blk%header == 'calculation.level') then
         call parse_leveldata(blk,newjob)
@@ -126,8 +132,8 @@ contains !> MODULE PROCEDURES START HERE
         call calc%add(newjob)
         included = .true.
 
-      else if (blk%header == 'calculation.constraints') then
-        call parse_constraintdat(blk,calc)
+      else if (index(blk%header,'calculation.constraint').ne.0) then
+        call parse_constraintdat(env,moltmp,blk,calc)
         included = .true.
 
       else if (blk%header == 'calculation.scans') then
@@ -143,10 +149,12 @@ contains !> MODULE PROCEDURES START HERE
   end subroutine parse_calculation_data
 
 !========================================================================================!
-!> The following routines are used to
-!> read information into the "calculation_settings" object
-!>---------------------------------------------------------
+
   subroutine parse_leveldata(blk,job)
+!**********************************************************
+!* The following routines are used to
+!* read information into the "calculation_settings" object
+!**********************************************************
     implicit none
     type(datablock),intent(in) :: blk
     type(calculation_settings),intent(out) :: job
@@ -181,7 +189,7 @@ contains !> MODULE PROCEDURES START HERE
     !> then, all others by key, automatic
     select case (kv%key)
     case default
-      continue 
+      continue
     end select
   end subroutine parse_setting_auto
   subroutine parse_setting_float(job,key,val)
@@ -204,8 +212,6 @@ contains !> MODULE PROCEDURES START HERE
       job%extpressure = val
     case ('proberad')
       job%proberad = val
-    case ('scaling')
-      job%scaling = val
     end select
     return
   end subroutine parse_setting_float
@@ -229,8 +235,6 @@ contains !> MODULE PROCEDURES START HERE
       job%ngrid = val
     case ('vdwset')
       job%vdwset = val
-    case ('printlevel')
-      job%plvl = val
     end select
     return
   end subroutine parse_setting_int
@@ -239,6 +243,7 @@ contains !> MODULE PROCEDURES START HERE
     type(calculation_settings) :: job
     character(len=*) :: key
     character(len=*) :: val
+    logical :: ex
     select case (key)
 
     case ('method')
@@ -350,18 +355,43 @@ contains !> MODULE PROCEDURES START HERE
         job%refine_lvl = refine%non
       end select
 
-    case( 'print' ) 
-      select case( val )
-      case ( 'true','yes')
+    case('restartfile','topo','reftopo')
+      inquire(file=val,exist=ex)
+      if(ex)then
+        job%restart = .true.
+        job%restartfile = val
+      else
+        write(stderr,'(a,a,a)') 'specified restart file ',val,' does not exist'
+        error stop
+      endif
+    case('refgeo','refxyz')
+      inquire(file=val,exist=ex)
+      if(ex)then
+        job%refgeo = val
+      else
+        write(stderr,'(a,a,a)') 'specified reference geometry file ',val,' does not exist'
+        error stop
+      endif
+    case('parametrisation')
+      inquire(file=val,exist=ex)
+      if(ex)then
+        job%parametrisation  = val
+      else
+        write(stderr,'(a,a,a)') 'specified parametrisation file ',val,' does not exist'
+        error stop
+      endif
+
+    case ('print')
+      select case (val)
+      case ('true','yes')
         job%pr = .true.
-      case ( 'false','no')
+      case ('false','no')
         job%pr = .false.
-      case ( 'append','cont','continuous')
+      case ('append','cont','continuous')
         job%pr = .true.
         job%prappend = .true.
       end select
       if (job%pr) job%prch = 999  !> the actual ID will be generated automatically
-
 
     end select
     return
@@ -399,61 +429,76 @@ contains !> MODULE PROCEDURES START HERE
     end select
     return
   end subroutine parse_setting_array
+
 !========================================================================================!
-!> The following routines are used to
-!> read information into the "calcdata" object
-!>---------------------------------------------------------
-  subroutine parse_calcdat(blk,calc)
+
+  subroutine parse_calcdat(env,blk,calc)
+!***********************************************
+!* The following routines are used to
+!* read information into the "calcdata" object
+!***********************************************
     implicit none
+    type(systemdata),intent(inout) :: env
     type(datablock),intent(in) :: blk
     type(calcdata),intent(inout) :: calc
     integer :: i
     if (blk%header .ne. 'calculation') return
     do i = 1,blk%nkv
-      call parse_calc(calc,blk%kv_list(i))
+      call parse_calc(env,calc,blk%kv_list(i))
     end do
     return
   end subroutine parse_calcdat
-  subroutine parse_calc_auto(calc,kv)
+  subroutine parse_calc_auto(env,calc,kv)
     implicit none
+    type(systemdata),intent(inout) :: env
     type(calcdata) :: calc
     type(keyvalue) :: kv
     select case (kv%id)
     case (1) !> float
-      call parse_calc(calc,kv%key,kv%value_f)
+      call parse_calc(env,calc,kv%key,kv%value_f)
     case (2) !> int
-      call parse_calc(calc,kv%key,kv%value_i)
+      call parse_calc(env,calc,kv%key,kv%value_i)
     case (3) !> bool
-      call parse_calc(calc,kv%key,kv%value_b)
+      call parse_calc(env,calc,kv%key,kv%value_b)
     case (4) !> string
-      call parse_calc(calc,kv%key,kv%value_c)
+      call parse_calc(env,calc,kv%key,kv%value_c)
+    end select
+    !> other, with multiple or raw type
+    select case (kv%key)
+    case ('optlev','ancopt_level')
+      env%optlev = optlevnum(kv%rawvalue)
     end select
   end subroutine parse_calc_auto
-  subroutine parse_calc_float(calc,key,val)
+  subroutine parse_calc_float(env,calc,key,val)
     implicit none
+    type(systemdata),intent(inout) :: env
     type(calcdata) :: calc
     character(len=*) :: key
     real(wp) :: val
     select case (key)
-    case( 'converge_e','ethr_opt' ) 
+    case ('converge_e','ethr_opt')
       calc%ethr_opt = val  !> optimization ΔE convergenve threshold (Ha)
 
-    case( 'converge_g','gthr_opt','rmsforce' )
+    case ('converge_g','gthr_opt','rmsforce')
       calc%gthr_opt = val !> optimization RMS convergence threshold (Ha/a0)
 
-    case( 'maxerise' )
+    case ('maxerise')
       calc%maxerise = val !> optimization max E rise (Ha)
 
-    case('displ_opt','maxdispl')
+    case ('displ_opt','maxdispl')
       calc%maxdispl_opt = val !> optimization step size/scaling
- 
+
+    case ('hguess')
+      calc%hguess = val  !> guess for the initial hessian
+
     case default
       return
     end select
     return
   end subroutine parse_calc_float
-  subroutine parse_calc_int(calc,key,val)
+  subroutine parse_calc_int(env,calc,key,val)
     implicit none
+    type(systemdata),intent(inout) :: env
     type(calcdata) :: calc
     character(len=*) :: key
     integer :: val
@@ -469,11 +514,13 @@ contains !> MODULE PROCEDURES START HERE
     end select
     return
   end subroutine parse_calc_int
-  subroutine parse_calc_c(calc,key,val)
+  subroutine parse_calc_c(env,calc,key,val)
     implicit none
+    type(systemdata),intent(inout) :: env
     type(calcdata) :: calc
     character(len=*) :: key
     character(len=*) :: val
+    logical,allocatable :: atlist(:)
     select case (key)
     case ('type')
       select case (val)
@@ -502,29 +549,41 @@ contains !> MODULE PROCEDURES START HERE
         calc%iupdat = 0
       end select
 
-    case( 'opt','opt_engine','opt_algo' )
-      select case(val)
-      case( 'ancopt' ) 
+    case ('opt','opt_engine','opt_algo')
+      select case (val)
+      case ('ancopt','rfo-anc')
         calc%opt_engine = 0
-      case( 'lbfgs','l-bfgs' )
+      case ('lbfgs','l-bfgs')
         calc%opt_engine = 1
-      case( 'gd','gradient descent' )
+      case ('rfo','rfo-cart')
+        calc%opt_engine = 2
+      case ('gd','gradient descent')
         calc%opt_engine = -1
       end select
+
+    case ('freeze')
+      call get_atlist(env%ref%nat,atlist,val,env%ref%at)
+      calc%nfreeze = count(atlist)
+      call move_alloc(atlist,calc%freezelist)
 
     case default
       return
     end select
     return
   end subroutine parse_calc_c
-  subroutine parse_calc_bool(calc,key,val)
+  subroutine parse_calc_bool(env,calc,key,val)
     implicit none
+    type(systemdata),intent(inout) :: env
     type(calcdata) :: calc
     character(len=*) :: key
     logical :: val
     select case (key)
     case ('eprint')
       calc%pr_energies = val
+
+    case ('exact_rf')
+      calc%exact_rf = val
+
     case default
       return
     end select
@@ -532,37 +591,139 @@ contains !> MODULE PROCEDURES START HERE
   end subroutine parse_calc_bool
 
 !========================================================================================!
-!> The following routines are used to
-!> read information into the "constraint" object
-!> and add it to a calculation data object
-!>---------------------------------------------------------
-  subroutine parse_constraintdat(blk,calc)
+
+  subroutine parse_constraintdat(env,mol,blk,calc)
+!*************************************************
+!* The following routines are used to
+!* read information into the "constraint" object
+!* and add it to a calculation data object
+!*************************************************
     implicit none
+    type(systemdata),intent(inout) :: env
+    type(coord),intent(inout) :: mol
     type(datablock),intent(in) :: blk
     type(calcdata),intent(inout) :: calc
     logical :: success
     type(constraint) :: constr
     integer :: i
-    if (blk%header .ne. 'calculation.constraints') return
+    !type(coord) :: mol 
+    logical,allocatable :: atlist(:)
+    if (blk%header .ne. 'calculation.constraints' .and.  &
+    & blk%header .ne. 'calculation.constraint') return
+    success = .false.
+    call constr%deallocate()
     do i = 1,blk%nkv
-      call parse_constraint_auto(constr,blk%kv_list(i),success)
-      if (success) then
-        call calc%add(constr)
-      end if
+      call parse_constraint_auto(env,constr,blk%kv_list(i),success)
+
+      select case (blk%kv_list(i)%key)
+      case ('freeze')
+        call get_atlist(env%ref%nat,atlist,blk%kv_list(i)%rawvalue,env%ref%at)
+        calc%nfreeze = count(atlist)
+        call move_alloc(atlist,calc%freezelist)
+      end select
     end do
+    if (success) then
+      call constr%complete(mol)
+      call calc%add(constr)
+    end if
     return
   end subroutine parse_constraintdat
-  subroutine parse_constraint_auto(constr,kv,success)
+  subroutine parse_constraint_auto(env,constr,kv,success)
     implicit none
+    type(systemdata) :: env
     type(keyvalue) :: kv
     type(constraint) :: constr
-    logical,intent(out) :: success
+    logical,intent(inout) :: success
     real(wp) :: dum1,dum2,dum3,dum4
     real(wp) :: rabc(3)
-    integer :: atm1,atm2,atm3,atm4
+    integer :: atm1,atm2,atm3,atm4,n,k,j
     logical,allocatable :: atlist(:)
-    success = .false.
+    !success = .false.
     select case (kv%key)
+    case ('type') !> the type of constraint
+      select case (kv%value_c)
+      case ('bond','bonds'); constr%type = 1
+      case ('angle'); constr%type = 2
+      case ('dihedral'); constr%type = 3
+      case ('wall'); constr%type = 4
+      case ('wall_logfermi','ellipsoid'); constr%type = 5
+      case ('box'); constr%type = 6
+      case ('bondrange'); constr%type = 8
+      case ('gapdiff'); constr%type = -1
+      case ('gapdiff2','mecp'); constr%type = -2
+      end select
+      if (constr%type /= 0) success = .true.
+
+    case ('fc','k','forceconstant','params') !> force constants or parameters
+      if (allocated(constr%fc)) deallocate (constr%fc)
+      select case (kv%id)
+      case (valuetypes%int)
+        allocate (constr%fc(1),source=0.0_wp)
+        constr%fc(1) = kv%value_i
+      case (valuetypes%float)
+        allocate (constr%fc(1),source=0.0_wp)
+        constr%fc(1) = kv%value_f
+      case (valuetypes%int_array)
+        n = size(kv%value_ia,1)
+        allocate (constr%fc(n),source=0.0_wp)
+        constr%fc(:) = real(kv%value_ia(:))
+      case (valuetypes%float_array)
+        n = size(kv%value_fa,1)
+        allocate (constr%fc(n),source=0.0_wp)
+        constr%fc(:) = real(kv%value_fa(:))
+      end select
+
+    case ('atoms')
+      if (allocated(constr%atms)) deallocate (constr%atms)
+      if (kv%id == valuetypes%int_array) then
+        n = size(kv%value_ia,1)
+        allocate (constr%atms(n),source=0)
+        constr%atms = kv%value_ia
+      else
+        allocate (atlist(env%ref%nat),source=.false.)
+        call get_atlist(env%ref%nat,atlist,kv%rawvalue,env%ref%at)
+        n = count(atlist)
+        allocate (constr%atms(n),source=0)
+        k = 0
+        do j = 1,env%ref%nat
+          if (atlist(j)) then
+            k = k+1
+            constr%atms(k) = j
+          end if
+        end do
+        deallocate (atlist) 
+      end if
+      constr%n = n
+
+    case ('ref','val') !> constrained value
+      if (allocated(constr%ref)) deallocate (constr%ref)
+      select case (kv%id)
+      case (valuetypes%int)
+        allocate (constr%ref(1),source=0.0_wp)
+        constr%ref(1) = kv%value_i
+      case (valuetypes%float)
+        allocate (constr%ref(1),source=0.0_wp)
+        constr%ref(1) = kv%value_f
+      case (valuetypes%int_array)
+        n = size(kv%value_ia,1)
+        allocate (constr%ref(n),source=0.0_wp)
+        constr%ref(:) = real(kv%value_ia(:))
+      case (valuetypes%float_array)
+        n = size(kv%value_fa,1)
+        allocate (constr%ref(n),source=0.0_wp)
+        constr%ref(:) = real(kv%value_fa(:))
+      end select
+
+    case ('wscal') !> scaling factor if the wall potential is automatically set up
+      if(kv%id == valuetypes%int)then
+        constr%wscal = max(0.0_wp, real(kv%value_i))
+      elseif(kv%id == valuetypes%float)then
+        constr%wscal = max(0.0_wp, kv%value_f)
+      endif
+
+!>--- the following are for specifiying keywords in a single line
+!>--- I don't know it was wise to code them like this because it's hacky,
+!>--- but i'll leave them so I don't get confused.
     case ('bond','bonds')
       select case (kv%id)
       case (4) !> string
@@ -580,6 +741,7 @@ contains !> MODULE PROCEDURES START HERE
       case default
         success = .false.
       end select
+
     case ('dihedral')
       read (kv%value_rawa(1),*) atm1
       read (kv%value_rawa(2),*) atm2
@@ -593,18 +755,21 @@ contains !> MODULE PROCEDURES START HERE
         call constr%dihedralconstraint(atm1,atm2,atm3,atm4,dum1)
       end if
       success = .true.
+
     case ('sphere')
       dum1 = kv%value_fa(3)  !> sphere radius
       dum2 = kv%value_fa(1)  !> prefactor
       dum3 = kv%value_fa(2)  !> exponent
       call constr%sphereconstraint(0,dum1,dum2,dum3,.false.)
       success = .true.
+
     case ('sphere_logfermi')
       dum1 = kv%value_fa(3)  !> sphere radius
       dum2 = kv%value_fa(1)  !> fermi temperature
       dum3 = kv%value_fa(2)  !> exponent factor
       call constr%sphereconstraint(0,dum1,dum2,dum3,.true.)
       success = .true.
+
     case ('ellipsoid','ellipsoid_logfermi')
       rabc(1:3) = kv%value_fa(1:3)
       if (index(kv%key,'logfermi') .ne. 0) then
@@ -621,11 +786,13 @@ contains !> MODULE PROCEDURES START HERE
         call constr%ellipsoid(0,atlist,rabc,dum1,dum2,.false.)
       end if
       success = .true.
+
     case ('gapdiff')
       dum1 = kv%value_fa(1)
       dum2 = kv%value_fa(2)
       call constr%gapdiffconstraint(dum1,dum2)
       success = .true.
+
     case ('gapdiff2','mecp')
       success = .true.
       if (kv%id == 3) then
@@ -642,6 +809,7 @@ contains !> MODULE PROCEDURES START HERE
         dum3 = kv%value_fa(3)
       end if
       call constr%gapdiffconstraint2(dum1,dum2,dum3)
+
     case ('bondrange')
       atm1 = nint(kv%value_fa(1))
       atm2 = nint(kv%value_fa(2))
@@ -664,6 +832,9 @@ contains !> MODULE PROCEDURES START HERE
         error stop '**ERROR** wrong number of arguments in bondrange constraint'
       end select
       success = .true.
+!>--------------
+!>--------------
+!>--------------
     case default
       return
     end select
@@ -672,11 +843,13 @@ contains !> MODULE PROCEDURES START HERE
   end subroutine parse_constraint_auto
 
 !========================================================================================!
-!> The following routines are used to
-!> read information into the "scan" object
-!> and add it to a calculation data object
-!>---------------------------------------------------------
+
   subroutine parse_scandat(blk,calc)
+!*******************************************
+!* The following routines are used to
+!* read information into the "scan" object
+!* and add it to a calculation data object
+!*******************************************
     implicit none
     type(datablock),intent(in) :: blk
     type(calcdata),intent(inout) :: calc
@@ -707,35 +880,35 @@ contains !> MODULE PROCEDURES START HERE
       scn%type = 1
       scn%n = 2
       allocate (scn%atms(2))
-      if(kv%id == valuetypes%float_array ) then
+      if (kv%id == valuetypes%float_array) then
         scn%atms(1) = nint(kv%value_fa(1))
         scn%atms(2) = nint(kv%value_fa(2))
         scn%minval = kv%value_fa(3)
         scn%maxval = kv%value_fa(4)
         if (kv%na > 4) then
-         scn%steps = nint(kv%value_fa(5))
+          scn%steps = nint(kv%value_fa(5))
         end if
         success = .true.
-      else if( kv%id == valuetypes%int_array ) then
-       scn%atms(1) = kv%value_ia(1)
-       scn%atms(2) = kv%value_ia(2)
-       scn%minval = real(kv%value_ia(3))
-       scn%maxval = real(kv%value_ia(4))
-       if (kv%na > 4) then
-        scn%steps = kv%value_ia(5)
-       end if
-       success = .true.
-      endif
-      
+      else if (kv%id == valuetypes%int_array) then
+        scn%atms(1) = kv%value_ia(1)
+        scn%atms(2) = kv%value_ia(2)
+        scn%minval = real(kv%value_ia(3))
+        scn%maxval = real(kv%value_ia(4))
+        if (kv%na > 4) then
+          scn%steps = kv%value_ia(5)
+        end if
+        success = .true.
+      end if
+
     case ('dihedral')
       scn%type = 3
       scn%n = 2
-      write(*,*) kv%value_rawa(:)
-      write(*,*) kv%value_ia(:)
-      write(*,*) kv%value_fa(:)
+      write (*,*) kv%value_rawa(:)
+      write (*,*) kv%value_ia(:)
+      write (*,*) kv%value_fa(:)
       allocate (scn%atms(4))
-       
-      if(kv%id == valuetypes%float_array ) then
+
+      if (kv%id == valuetypes%float_array) then
         scn%atms(1) = nint(kv%value_fa(1))
         scn%atms(2) = nint(kv%value_fa(2))
         scn%atms(3) = nint(kv%value_fa(3))
@@ -748,7 +921,7 @@ contains !> MODULE PROCEDURES START HERE
           scn%maxval = kv%value_fa(7)
         end if
         success = .true.
-      else if( kv%id == valuetypes%int_array ) then
+      else if (kv%id == valuetypes%int_array) then
         scn%atms(1) = kv%value_ia(1)
         scn%atms(2) = kv%value_ia(2)
         scn%atms(3) = kv%value_ia(3)
@@ -761,27 +934,8 @@ contains !> MODULE PROCEDURES START HERE
           scn%maxval = real(kv%value_ia(7))
         end if
         success = .true.
-      endif
+      end if
 
-      !read (kv%value_rawa(1),*) atm1
-      !scn%atms(1) = atm1
-      !read (kv%value_rawa(2),*) atm2
-      !scn%atms(2) = atm2
-      !read (kv%value_rawa(3),*) atm3
-      !scn%atms(3) = atm3
-      !read (kv%value_rawa(4),*) atm4
-      !scn%atms(4) = atm4
-      !if (kv%na > 4) then
-      !  read (kv%value_rawa(5),*) nsteps
-      !  scn%steps = nsteps
-      !end if
-      !if (kv%na > 6) then
-      !  read (kv%value_rawa(6),*) dum1
-      !  scn%minval = dum1
-      !  read (kv%value_rawa(7),*) dum2
-      !  scn%maxval = dum2
-      !end if
-      !success = .true.
     case default
       return
     end select
@@ -790,11 +944,14 @@ contains !> MODULE PROCEDURES START HERE
   end subroutine parse_scan_auto
 
 !========================================================================================!
-!> The following routines are used to
-!> read information into the "mddata" object
-!>---------------------------------------------------------
-  subroutine parse_dynamics_data(mddat,dict,included)
+
+  subroutine parse_dynamics_data(env,mddat,dict,included)
+!*********************************************
+!* The following routines are used to
+!* read information into the "mddata" object
+!*********************************************
     implicit none
+    type(systemdata) :: env
     type(mddata) :: mddat
     type(root_object) :: dict
     type(datablock) :: blk
@@ -810,7 +967,7 @@ contains !> MODULE PROCEDURES START HERE
       blk = dict%blk_list(i)
       if (blk%header == 'dynamics') then
         included = .true.
-        call parse_mddat(blk,mddat)
+        call parse_mddat(env,blk,mddat)
       else if (blk%header == 'dynamics.meta') then
         call parse_metadyn(blk,mddat)
         included = .true.
@@ -821,15 +978,39 @@ contains !> MODULE PROCEDURES START HERE
     end if
     return
   end subroutine parse_dynamics_data
-  subroutine parse_mddat(blk,mddat)
+  subroutine parse_mddat(env,blk,mddat)
     implicit none
+    type(systemdata),intent(inout) :: env
     type(datablock),intent(in) :: blk
     type(mddata),intent(inout) :: mddat
-    integer :: i
+    logical,allocatable :: atlist(:)
+    integer :: i,j,nat
     if (blk%header .ne. 'dynamics') return
+    nat = env%ref%nat
+    allocate (atlist(nat),source=.false.)
+
     do i = 1,blk%nkv
       call parse_md(mddat,blk%kv_list(i))
+
+      select case (blk%kv_list(i)%key)
+      case ('includermsd','atlist+')
+        call get_atlist(nat,atlist,blk%kv_list(i)%rawvalue,env%ref%at)
+        if (.not.allocated(env%includeRMSD)) allocate (env%includeRMSD(nat),source=1)
+        do j = 1,nat
+          if (atlist(j)) env%includeRMSD(j) = 1
+        end do
+
+      case ('excludermsd','atlist-')
+        call get_atlist(nat,atlist,blk%kv_list(i)%rawvalue,env%ref%at)
+        if (.not.allocated(env%includeRMSD)) allocate (env%includeRMSD(nat),source=1)
+        do j = 1,nat
+          if (atlist(j)) env%includeRMSD(j) = 0
+        end do
+
+      end select
+
     end do
+    deallocate (atlist)
     return
   end subroutine parse_mddat
   subroutine parse_md_auto(mddat,kv)
@@ -928,11 +1109,13 @@ contains !> MODULE PROCEDURES START HERE
   end subroutine parse_md_bool
 
 !========================================================================================!
-!> The following routines are used to
-!> read information into the "metadynamics" object
-!> and add it to a mol.dynamics data object
-!>---------------------------------------------------------
+
   subroutine parse_metadyn(blk,mddat)
+!**************************************************
+!* The following routines are used to
+!* read information into the "metadynamics" object
+!* and add it to a mol.dynamics data object
+!***************************************************
     implicit none
     type(datablock),intent(in) :: blk
     type(mddata),intent(inout) :: mddat
@@ -1022,6 +1205,7 @@ contains !> MODULE PROCEDURES START HERE
     case ('biasfile')
       mtd%mtdtype = cv_rmsd_static
       mtd%biasfile = val
+
     case default
       return
     end select
@@ -1039,5 +1223,6 @@ contains !> MODULE PROCEDURES START HERE
     return
   end subroutine parse_mtd_bool
 
+!========================================================================================!
 !========================================================================================!
 end module parse_calcdata

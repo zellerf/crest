@@ -20,7 +20,7 @@
 !--------------------------------------------------------------------------------------------
 ! A quick single point xtb calculation without wbo
 !--------------------------------------------------------------------------------------------
-subroutine xtbsp3(env, fname)
+subroutine xtb_sp_qcg(env, fname)
    use iso_fortran_env, only: wp => real64
    use iomod
    use crest_data
@@ -49,7 +49,57 @@ subroutine xtbsp3(env, fname)
    call remove('xtbrestart')
    call remove('xtbtopo.mol')
    call remove('gfnff_topo')
-end subroutine xtbsp3
+end subroutine xtb_sp_qcg
+
+!--------------------------------------------------------------------------------------------
+! A quick single xtb optimization gets zmol and overwrites it with optimized stuff
+!--------------------------------------------------------------------------------------------
+subroutine xtb_opt_qcg(env, zmol, constrain)
+   use iso_fortran_env, only: wp => real64
+   use iomod
+   use crest_data
+   use zdata
+   use strucrd
+
+   implicit none
+   type(systemdata), intent(in) :: env
+   type(zmolecule), intent(inout) :: zmol
+
+   character(:), allocatable :: fname
+   character(len=512) :: jobcall
+   logical :: constrain
+   logical :: const
+   character(*), parameter :: pipe = ' > xtb_opt.out 2> /dev/null'
+   integer :: io
+
+!--- Write coordinated
+   fname = 'coord'
+   call wrc0(fname, zmol%nat, zmol%at, zmol%xyz) !write coord for xtbopt routine
+
+!---- setting threads
+   if (env%autothreads) then
+      call ompautoset(env%threads, 7, env%omp, env%MAXRUN, 1) !set the global OMP/MKL variables for the xtb jobs
+   end if
+!---- jobcall & Handling constraints
+   if(constrain .AND. env%cts%used) then
+     call write_constraint(env, fname, 'xcontrol')
+     call wrc0('coord.ref', zmol%nat, zmol%at, zmol%xyz) !write coord for xtbopt routine
+     write (jobcall, '(a,1x,a,1x,a,'' --opt --input xcontrol '',a,1x,a)') &
+     &     trim(env%ProgName), trim(fname), trim(env%gfnver), trim(env%solv), trim(pipe)
+   else
+     write (jobcall, '(a,1x,a,1x,a,'' --opt '',a,1x,a)') &
+     &     trim(env%ProgName), trim(fname), trim(env%gfnver), trim(env%solv), trim(pipe)
+   end if
+
+   call command(trim(jobcall), io)
+!---- cleanup
+   call rdcoord('xtbopt.coord', zmol%nat, zmol%at, zmol%xyz)
+   call remove('energy')
+   call remove('charges')
+   call remove('xtbrestart')
+   call remove('xtbtopo.mol')
+   call remove('gfnff_topo')
+end subroutine xtb_opt_qcg
 
 !___________________________________________________________________________________
 !
@@ -216,7 +266,7 @@ subroutine opt_cluster(env, solu, clus, fname, without_pot)
    character(len=512)              :: jobcall
 
    if (env%niceprint) then
-      call printemptybar()
+      call printprogbar(0.0_wp)
    end if
 
    call remove('xtb.out')
@@ -284,7 +334,6 @@ subroutine ensemble_lmo(env, fname, self, NTMP, TMPdir, conv)
    character(len=20)               :: pipe
    character(len=512)              :: thispath, tmppath
    character(len=1024)             :: jobcall
-   character(len=52)               :: bar
    real(wp)                        :: percent
 
 ! setting the threads for correct parallelization
@@ -299,11 +348,10 @@ subroutine ensemble_lmo(env, fname, self, NTMP, TMPdir, conv)
    write (jobcall, '(a,1x,a,1x,a,'' --sp --lmo --chrg '',f4.1,1x,a,'' >xtb_lmo.out'')') &
    &     trim(env%ProgName), trim(fname), trim(env%lmover), self%chrg, trim(pipe)
    k = 0 !counting the finished jobs
-
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,jobcall,NTMP,percent,k,bar,TMPdir,conv )
+!$omp shared( vz,jobcall,NTMP,percent,k,TMPdir,conv )
 !$omp single
    do i = 1, NTMP
       vz = i
@@ -357,7 +405,6 @@ subroutine ensemble_iff(env, outer_ell_abc, nfrag1, frag1_file, frag2_file, NTMP
    character(len=20)               :: pipe
    character(len=512)              :: tmppath
    character(len=1024)             :: jobcall
-   character(len=52)               :: bar
    character(len=64), intent(in)    :: frag1_file
    character(len=64), intent(in)    :: frag2_file
    character(len=64)               :: frag1
@@ -379,7 +426,7 @@ subroutine ensemble_iff(env, outer_ell_abc, nfrag1, frag1_file, frag2_file, NTMP
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,NTMP,percent,k,bar,TMPdir,conv )
+!$omp shared( vz,NTMP,percent,k,TMPdir,conv )
 !$omp single
    do i = 1, NTMP
       vz = i
@@ -430,7 +477,6 @@ subroutine ensemble_dock(env, outer_ell_abc, nfrag1, frag1_file, frag2_file, n_s
    character(len=20)               :: pipe
    character(len=1024)             :: jobcall
    character(len=512)              :: thispath, tmppath
-   character(len=52)               :: bar
    character(len=*), intent(in)     :: frag1_file
    character(len=*), intent(in)     :: frag2_file
    character(len=64)               :: frag1
@@ -476,7 +522,7 @@ subroutine ensemble_dock(env, outer_ell_abc, nfrag1, frag1_file, frag2_file, n_s
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,NTMP,percent,k,bar,TMPdir,conv,n_shell,n_solvent,jobcall )
+!$omp shared( vz,NTMP,percent,k,TMPdir,conv,n_shell,n_solvent,jobcall )
 !$omp single
    do i = 1, NTMP
       vz = i
@@ -524,7 +570,6 @@ subroutine cff_opt(postopt, env, fname, n12, NTMP, TMPdir, conv, nothing_added)
    character(len=20)               :: pipe
    character(len=512)              :: thispath, tmppath
    character(len=1024)             :: jobcall
-   character(len=52)               :: bar
    character(len=2)                :: flag
    real(wp)                        :: percent
 
@@ -575,11 +620,11 @@ subroutine cff_opt(postopt, env, fname, n12, NTMP, TMPdir, conv, nothing_added)
    end if
 
    k = 0 !counting the finished jobs
-   if (postopt) call printemptybar()
+   if (postopt) call printprogbar(0.0_wp)
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,jobcall,NTMP,percent,k,bar,TMPdir,conv )
+!$omp shared( vz,jobcall,NTMP,percent,k,TMPdir,conv )
 !$omp single
    do i = 1, NTMP
       vz = i
@@ -590,8 +635,7 @@ subroutine cff_opt(postopt, env, fname, n12, NTMP, TMPdir, conv, nothing_added)
       k = k + 1
       percent = float(k)/float(NTMP)*100
       if (postopt) then
-         call progbar(percent, bar)
-         call printprogbar(percent, bar)
+         call printprogbar(percent)
       end if
       !$omp end critical
       !$omp end task
@@ -619,11 +663,11 @@ subroutine cff_opt(postopt, env, fname, n12, NTMP, TMPdir, conv, nothing_added)
    end if
 
    k = 0 !counting the finished jobs
-   if (postopt) call printemptybar()
+   if (postopt) call printprogbar(0.0_wp)
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,jobcall,NTMP,percent,k,bar,TMPdir,conv )
+!$omp shared( vz,jobcall,NTMP,percent,k,TMPdir,conv )
 !$omp single
    do i = 1, NTMP
       vz = i
@@ -634,8 +678,7 @@ subroutine cff_opt(postopt, env, fname, n12, NTMP, TMPdir, conv, nothing_added)
       k = k + 1
       percent = float(k)/float(NTMP)*100
       if (postopt) then
-         call progbar(percent, bar)
-         call printprogbar(percent, bar)
+         call printprogbar(percent)
       end if
       !$omp end critical
       !$omp end task
@@ -683,7 +726,6 @@ subroutine ens_sp(env, fname, NTMP, TMPdir)
    character(len=20)               :: pipe
    character(len=512)              :: thispath, tmppath
    character(len=1024)             :: jobcall
-   character(len=52)               :: bar
    real(wp)                        :: percent
 
 ! setting the threads for correct parallelization
@@ -708,22 +750,24 @@ subroutine ens_sp(env, fname, NTMP, TMPdir)
    &    trim(env%ProgName), trim(fname), trim(env%gfnver), trim(env%solv), trim(pipe)
 
    k = 0 !counting the finished jobs
-   call printemptybar()
+   call printprogbar(0.0_wp)
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,NTMP,percent,k,bar,TMPdir,jobcall )
+!$omp shared( vz,NTMP,percent,k,TMPdir,jobcall )
 !$omp single
    do i = 1, NTMP
       vz = i
       !$omp task firstprivate( vz ) private( tmppath )
-      write (tmppath, '(a,i0)') trim(TMPdir), i
+      call initsignal()
+      !$omp critical
+      write (tmppath, '(a,i0)') trim(TMPdir), vz
+      !$omp end critical
       call command('cd '//trim(tmppath)//' && '//trim(jobcall))
       !$omp critical
       k = k + 1
       percent = float(k)/float(NTMP)*100
-      call progbar(percent, bar)
-      call printprogbar(percent, bar)
+      call printprogbar(percent)
       !$omp end critical
       !$omp end task
    end do
@@ -766,7 +810,6 @@ subroutine ens_freq(env, fname, NTMP, TMPdir, opt)
    character(len=20)               :: pipe
    character(len=512)              :: thispath, tmppath
    character(len=1024)             :: jobcall
-   character(len=52)               :: bar
    real(wp)                        :: percent
    logical                         :: opt
 
@@ -788,7 +831,7 @@ subroutine ens_freq(env, fname, NTMP, TMPdir, opt)
    end if
 
    k = 0 !counting the finished jobs
-   call printemptybar()
+   call printprogbar(0.0_wp)
 
 !--- Jobcall
    if (.not. opt) then
@@ -802,7 +845,7 @@ subroutine ens_freq(env, fname, NTMP, TMPdir, opt)
 !___________________________________________________________________________________
 
 !$omp parallel &
-!$omp shared( vz,NTMP,percent,k,bar,TMPdir,jobcall )
+!$omp shared( vz,NTMP,percent,k,TMPdir,jobcall )
 !$omp single
    do i = 1, NTMP
       vz = i
@@ -812,8 +855,7 @@ subroutine ens_freq(env, fname, NTMP, TMPdir, opt)
       !$omp critical
       k = k + 1
       percent = float(k)/float(NTMP)*100
-      call progbar(percent, bar)
-      call printprogbar(percent, bar)
+      call printprogbar(percent)
       !$omp end critical
       !$omp end task
    end do
@@ -1010,3 +1052,25 @@ subroutine check_dock(neg_E)
    if (ex .and. int_E < 0.0_wp) neg_E = .true.
 
 end subroutine check_dock
+
+subroutine write_constraint(env,coord_name,fname)
+  use iso_fortran_env, only : wp => real64
+  use crest_data
+  use iomod
+
+  implicit none
+
+  type(systemdata)     :: env
+  character(len=*),intent(in)    :: fname, coord_name
+
+  call copysub(coord_name, 'coord.ref')
+  open(unit=31,file=fname)
+  call write_cts(31,env%cts)
+  call write_cts_biasext(31,env%cts)
+  if(env%cts%used) then !Only, if user set constrians is an $end written
+     write(31,'(a)') '$end'
+  end if
+
+  close(31)
+
+end subroutine write_constraint

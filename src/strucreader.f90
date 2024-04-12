@@ -1299,6 +1299,7 @@ contains  !> MODULE PROCEDURES START HERE
     integer :: ftype
     integer :: i,j,k,ich,io
     logical :: ex
+    real(wp) :: en
 
     inquire (file=fname,exist=ex)
     if (.not.ex) then
@@ -1311,15 +1312,17 @@ contains  !> MODULE PROCEDURES START HERE
     call rdnat(fname,nat)
 
     if (nat > 0) then
+      en = 0.0_wp
       allocate (at(nat),xyz(3,nat))
       if (ftype == pdbfile) then
         call rdPDB(fname,nat,at,xyz,self%pdb)
         xyz = xyz/bohr
       else
-        call rdcoord(fname,nat,at,xyz)
+        call rdcoord(fname,nat,at,xyz,energy=en)
       end if
 
       self%nat = nat
+      self%energy = en
       call move_alloc(at,self%at)
       call move_alloc(xyz,self%xyz)
     else
@@ -1369,7 +1372,7 @@ contains  !> MODULE PROCEDURES START HERE
 
 !==================================================================!
 ! function coord_getangle
-! calculate the angle for a given trio of atoms
+! calculate the angle for a given trio of atoms in rad
 ! A1-A2-A3
 !==================================================================!
   function coord_getangle(self,a1,a2,a3) result(angle)
@@ -1389,7 +1392,7 @@ contains  !> MODULE PROCEDURES START HERE
 
 !==================================================================!
 ! function coord_getdihedral
-! calculate the dihedral angle for a given quartet of atoms
+! calculate the dihedral angle for a given quartet of atoms in rad
 ! A1-A2-A3-A4
 !==================================================================!
   function coord_getdihedral(self,a1,a2,a3,a4) result(dihed)
@@ -2218,13 +2221,22 @@ contains  !> MODULE PROCEDURES START HERE
         read (atmp,*,iostat=io) i1
         !> check if it is an element symbol
         if (io /= 0) then
-          if(len_trim(atmp) > 2) cycle !> exclude non-elements
-          k = e2i(atmp)
-          if (present(at)) then
-            do j = 1,nat
-              if (at(j) == k) atlist(j) = .true.
-            end do
-          end if
+          if(len_trim(atmp) > 2)then
+            if(index(trim(atmp),'heavy').ne.0)then !> all heavy atoms
+              if (present(at)) then
+              do j = 1,nat
+                if (at(j) > 1) atlist(j) = .true.
+              end do
+              end if
+            endif
+          else !> element symbols
+            k = e2i(atmp)
+            if (present(at)) then
+              do j = 1,nat
+                if (at(j) == k) atlist(j) = .true.
+              end do
+            end if
+          endif
         else
           atlist(i1) = .true.
         end if

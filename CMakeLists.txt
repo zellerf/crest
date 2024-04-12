@@ -10,21 +10,32 @@
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with crest.  If not, see <https://www.gnu.org/licenses/>.
 
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.17)
+option(WITH_OBJECT "To build using object library" TRUE)
+option(INSTALL_MODULES "Install Fortran module files to include directory." FALSE)
 
+# Buggy CMake versions
+if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.27.0 AND CMAKE_VERSION VERSION_LESS 3.28.0)
+   set(WITH_OBJECT FALSE)
+endif()
+
+# Setup the crest Project
 project(
-  "crest"
-  LANGUAGES "Fortran" "C"
-  VERSION "3.0"
+  crest
+  LANGUAGES "C" "Fortran"
+  VERSION  3.0 
+  DESCRIPTION "A tool for the exploration of low-energy chemical space"
 )
-set(SOVERSION "dev")
+#set(SOVERSION "pre")
 
 # Follow GNU conventions for installing directories
 include(GNUInstallDirs)
 
-# General configuration information
-set(libs)
+# Include further configurations
 add_subdirectory("config")
 
 
@@ -32,78 +43,70 @@ add_subdirectory("config")
 # Libraries
 #
 
-# OpenMP dependency
-if(NOT TARGET OpenMP::OpenMP_Fortran AND WITH_OpenMP)
-  find_package(OpenMP REQUIRED)
-  list(
-    APPEND libs
-    OpenMP::OpenMP_Fortran
-  )
+
+###############################################################################
+####################### SUBPROJECTS & DEPENDENCIES ############################
+###############################################################################
+# Check a specific CMake targets and execute the
+# corresponding Find scripts (located in config/modules/)
+
+# LAPACK, BLAS, OpenMP (usually via shared dependencies)
+if(STATICBUILD)
+ set(BLA_STATIC ON)
+endif()
+find_package(LAPACK REQUIRED)
+find_package(BLAS REQUIRED)
+if(NOT TARGET "OpenMP::OpenMP_Fortran" AND WITH_OpenMP)
+  find_package("OpenMP" REQUIRED)
 endif()
 
-# BLAS and LAPACK
-if(NOT TARGET BLAS::BLAS)
-  find_package(BLAS REQUIRED)
-  if(NOT TARGET BLAS::BLAS AND BLAS_FOUND)
-    add_library(BLAS::BLAS INTERFACE IMPORTED)
-    target_link_libraries(BLAS::BLAS INTERFACE "${BLAS_LIBRARIES}")
-    target_link_options(BLAS::BLAS INTERFACE "${BLAS_LINKER_FLAGS}")
-  endif()
+# Fortran unit test interface (also used by other subprojects)
+if(NOT TARGET "test-drive::test-drive" AND WITH_TESTS)
+   find_package("test-drive" REQUIRED)
 endif()
-if(NOT TARGET LAPACK::LAPACK)
-  find_package(LAPACK REQUIRED)
-  if(NOT TARGET LAPACK::LAPACK AND LAPACK_FOUND)
-    add_library(LAPACK::LAPACK INTERFACE IMPORTED)
-    target_link_libraries(LAPACK::LAPACK INTERFACE "${LAPACK_LIBRARIES}")
-    target_link_options(LAPACK::LAPACK INTERFACE "${LAPACK_LINKER_FLAGS}")
-  endif()
+
+# TOML-F (needs to be imported before tblite)
+if(NOT TARGET "toml-f::toml-f" AND WITH_TOMLF)
+   find_package("toml-f" REQUIRED)
+   add_compile_definitions(WITH_TOMLF)
 endif()
-list(
-  APPEND libs
-  LAPACK::LAPACK
-  BLAS::BLAS
-)
 
 # tblite
+if(NOT TARGET "tblite::tblite" AND WITH_TBLITE)
+   find_package("tblite" REQUIRED)
+   add_compile_definitions(WITH_TBLITE)
+endif()
+
+# GFN-FF
+if(NOT TARGET "gfnff::gfnff" AND WITH_GFNFF)
+   find_package("gfnff" REQUIRED)
+   add_compile_definitions(WITH_GFNFF)
+endif()
+
+# GFN0-xTB
+if(NOT TARGET "gfn0::gfn0" AND WITH_GFN0)
+   find_package("gfn0" REQUIRED)
+   add_compile_definitions(WITH_GFN0)
+endif()
+
+# XHCFF
+if(NOT TARGET "xhcff::xhcff" AND WITH_XHCFF)
+   find_package("xhcff" REQUIRED)
+   add_compile_definitions(WITH_XHCFF)
+endif()
+
+# lwONIOM
+if(NOT TARGET "lwoniom::lwoniom" AND WITH_LWONIOM)
+   find_package("lwoniom" REQUIRED)
+   add_compile_definitions(WITH_LWONIOM)
+endif()
+
 if(WITH_TBLITE)
   find_package("tblite" REQUIRED)
   add_definitions(-DWITH_TBLITE)
   list(
     APPEND libs
     tblite::tblite
-  )
-endif()
-
-
-# toml-f
-if(WITH_TOMLF)
-  find_package("toml-f" REQUIRED)
-  add_definitions(-DWITH_TOMLF)
-  list(
-    APPEND libs
-    toml-f::toml-f
-  )
-endif()
-
-
-# GFN0-xTB
-if(WITH_GFN0)
-  find_package("gfn0" REQUIRED)
-  add_definitions(-DWITH_GFN0)
-  list(
-    APPEND libs
-    gfn0::gfn0
-  )
-endif()
-
-
-# GFN-FF
-if(WITH_GFNFF)
-  find_package("gfnff" REQUIRED)
-  add_definitions(-DWITH_GFNFF)
-  list(
-    APPEND libs
-    gfnff::gfnff
   )
 endif()
 
@@ -123,18 +126,177 @@ endif()
 #
 # CREST sources
 #
+# Sources: initialize program sources (prog) and library sources (srcs) empty
 set(prog)
 set(srcs)
 add_subdirectory("src")
 
 
-#
-# Executables
-#
+if(NOT EXISTS "${PROJECT_BINARY_DIR}/include")
+   file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/include")
+endif()
+
+###############################################################################
+########################## OBJECT LIBRARY #####################################
+###############################################################################
+if(WITH_OBJECT AND NOT STATICBUILD)
+   
+   add_library(
+      "${PROJECT_NAME}-object"
+      OBJECT
+      ${srcs}
+   )
+
+   # customize object library
+   set_target_properties(
+      "${PROJECT_NAME}-object"
+      PROPERTIES
+      Fortran_MODULE_DIRECTORY "${PROJECT_BINARY_DIR}/include"
+      POSITION_INDEPENDENT_CODE ON
+   )
+
+   # link object library conditionally against required
+   target_link_libraries(
+      "${PROJECT_NAME}-object"
+      PUBLIC
+      $<$<BOOL:${WITH_TBLITE}>:tblite::tblite>
+      $<$<BOOL:${WITH_GFN0}>:gfn0::gfn0>
+      $<$<BOOL:${WITH_GFNFF}>:gfnff::gfnff>
+      $<$<BOOL:${WITH_XHCFF}>:xhcff::xhcff>
+      $<$<BOOL:${WITH_TOMLF}>:toml-f::toml-f>
+      $<$<BOOL:${WITH_LWONIOM}>:lwoniom::lwoniom>
+      $<$<BOOL:${WITH_OpenMP}>:OpenMP::OpenMP_Fortran>
+   )
+
+   # include directories
+   target_include_directories(
+      "${PROJECT_NAME}-object"
+      PUBLIC
+      ${crest-config-dir}
+      ${PROJECT_BINARY_DIR}
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+      $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_INCLUDEDIR}>
+   )
+
+endif()
+
+###############################################################################
+############################### Static Library ################################
+###############################################################################
+if(WITH_OBJECT AND NOT STATICBUILD)
+   add_library(
+      "lib-${PROJECT_NAME}-static"
+      STATIC
+      $<TARGET_OBJECTS:${PROJECT_NAME}-object>
+   )
+else()
+   add_library(
+      "lib-${PROJECT_NAME}-static"
+      STATIC
+      ${srcs}
+   )
+endif()
+
+# workaround attemp. doesn't work yet
+set(LINK_OpenMP FALSE)
+if(WITH_OpenMP AND NOT STATICBUILD)
+  set(LINK_OpenMP TRUE)
+endif()
+
+target_link_libraries(
+   "lib-${PROJECT_NAME}-static"
+   PUBLIC
+   ${BLAS_LIBRARIES}
+   ${LAPACK_LIBRARIES}
+   $<$<BOOL:${LINK_OpenMP}>:OpenMP::OpenMP_Fortran>
+   $<$<BOOL:${WITH_TBLITE}>:tblite::tblite>
+   $<$<BOOL:${WITH_GFN0}>:gfn0::gfn0>
+   $<$<BOOL:${WITH_GFNFF}>:gfnff::gfnff>
+   $<$<BOOL:${WITH_XHCFF}>:xhcff::xhcff>
+   $<$<BOOL:${WITH_TOMLF}>:toml-f::toml-f>
+   $<$<BOOL:${WITH_LWONIOM}>:lwoniom::lwoniom>
+   $<$<BOOL:${STATICBUILD}>:-static>
+)
+
+
+set_target_properties(
+   "lib-${PROJECT_NAME}-static"
+   PROPERTIES
+   Fortran_MODULE_DIRECTORY "${PROJECT_BINARY_DIR}/include"
+   ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+   POSITION_INDEPENDENT_CODE ON
+   OUTPUT_NAME "${PROJECT_NAME}"
+ )
+
+
+target_include_directories(
+  "lib-${PROJECT_NAME}-static"
+  PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+  $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+
+####################################################################################
+############################# Shared Library #######################################
+####################################################################################
+if (WITH_OBJECT AND NOT STATICBUILD) 
+   add_library(
+      "lib-${PROJECT_NAME}-shared"
+      SHARED
+      $<TARGET_OBJECTS:${PROJECT_NAME}-object>
+   )
+
+   target_link_libraries(
+      "lib-${PROJECT_NAME}-shared"
+      PUBLIC
+      ${BLAS_LIBRARIES}
+      ${LAPACK_LIBRARIES}
+      $<$<BOOL:${WITH_OpenMP}>:OpenMP::OpenMP_Fortran>
+      $<$<BOOL:${WITH_TBLITE}>:tblite::tblite>
+      $<$<BOOL:${WITH_GFN0}>:gfn0::gfn0>
+      $<$<BOOL:${WITH_GFNFF}>:gfnff::gfnff>
+      $<$<BOOL:${WITH_XHCFF}>:xhcff::xhcff>
+      $<$<BOOL:${WITH_TOMLF}>:toml-f::toml-f>
+      $<$<BOOL:${WITH_LWONIOM}>:lwoniom::lwoniom>
+   )
+
+   set_target_properties(
+      "lib-${PROJECT_NAME}-shared"
+      PROPERTIES
+      Fortran_MODULE_DIRECTORY "${PROJECT_BINARY_DIR}/include"
+      LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+      OUTPUT_NAME "${PROJECT_NAME}"
+      VERSION "${PROJECT_VERSION}"
+      SOVERSION "${PROJECT_VERSION_MAJOR}"
+   )
+
+   target_include_directories(
+      "lib-${PROJECT_NAME}-shared"
+      PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
+      $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_INCLUDEDIR}>
+   )
+endif()
+
+###############################################################################
+############################### Executables ###################################
+###############################################################################
 add_executable(
   ${PROJECT_NAME}-exe
-  "${srcs}" "${prog}"
+  ${prog}
 )
+
+target_link_libraries(
+   ${PROJECT_NAME}-exe
+   PRIVATE
+   "lib-${PROJECT_NAME}-static"
+   $<$<BOOL:${STATICBUILD}>:-static>
+)
+
 set_target_properties(
   ${PROJECT_NAME}-exe
   PROPERTIES
@@ -142,24 +304,73 @@ set_target_properties(
   RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
   OUTPUT_NAME "${PROJECT_NAME}"
 )
-target_link_libraries(
-  ${PROJECT_NAME}-exe
-  PRIVATE
-  "${libs}"
+
+target_include_directories(
+   ${PROJECT_NAME}-exe 
+   PRIVATE 
+   ${PROJECT_SOURCE_DIR}/include
+   $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
 )
 
-get_target_property(OUT ${PROJECT_NAME}-exe LINK_LIBRARIES)
-message(STATUS ${OUT})
 
-#
-# Binary installing option
-#
+###############################################################################
+########################### Install Instructions ##############################
+###############################################################################
+
+# Build output artifacts
+if (WITH_OBJECT)
+   install(
+      TARGETS
+      "lib-${PROJECT_NAME}-static"
+      "lib-${PROJECT_NAME}-shared"
+      "${PROJECT_NAME}-exe"
+      EXPORT "${PROJECT_NAME}-targets"
+      LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+   )
+else()
+   install(
+      TARGETS
+      "lib-${PROJECT_NAME}-static"
+      "${PROJECT_NAME}-exe"
+      EXPORT "${PROJECT_NAME}-targets"
+      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+   )
+endif()
 install(
-  TARGETS
-  "${PROJECT_NAME}-exe"
   EXPORT
   "${PROJECT_NAME}-targets"
-  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  NAMESPACE
+  "${PROJECT_NAME}::"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
 )
+install(
+  DIRECTORY
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(
+  DIRECTORY
+  "${CMAKE_CURRENT_BINARY_DIR}/include/"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${module-dir}"
+)
+# Package license files
+install(
+  FILES
+  "COPYING"
+  "COPYING.LESSER"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/${PROJECT_NAME}"
+)
+
+##############################################################################
+############################# Unit Tests #####################################
+##############################################################################
+
+if (WITH_TESTS)
+  enable_testing()
+  add_subdirectory("test")
+endif()

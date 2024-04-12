@@ -80,6 +80,8 @@ module crest_data
   integer,parameter,public :: crest_numhessian = 269
   integer,parameter,public :: crest_scanning   = 270
   integer,parameter,public :: crest_rigcon     = 271
+  integer,parameter,public :: crest_trialopt   = 272
+  integer,parameter,public :: crest_ensemblesp = 273
 !>> <<!
   integer,parameter,public :: crest_test       = 456
 
@@ -128,8 +130,8 @@ module crest_data
 
   type :: constra
     integer :: ndim
-    logical :: used
-    logical :: NCI
+    logical :: used = .false.
+    logical :: NCI = .false.
     logical :: ggrid = .false.
     character(len=:),allocatable :: gbsagrid
     character(len=128),allocatable :: sett(:)
@@ -248,6 +250,8 @@ module crest_data
     real(wp) :: sthr = 25.0_wp   !> rot/vib interpol threshold (in xtb 50.0)
     real(wp) :: trange(3)
     integer  :: ntemps
+    character(len=:),allocatable :: coords !> name of structure file for standalone use
+    character(len=:),allocatable :: vibfile !> name of file containing frequencies or hessian
     real(wp),allocatable :: temps(:)
     real(wp) :: ptot = 0.9d0       !> population sthreshold
     integer  :: pcap = 50000       !> limit number of structures
@@ -274,6 +278,7 @@ module crest_data
   contains
     procedure :: rdcharges => read_charges
     procedure :: to => ref_to_mol
+    procedure :: load => ref_load_mol
   end type refdata
 
 !========================================================================================!
@@ -349,7 +354,7 @@ module crest_data
     character(len=512) :: homedir        !> original directory from which calculation was started
     character(len=512) :: scratchdir     !> path to the scratch directory
     character(len=:),allocatable :: cmd
-    character(len=:),allocatable :: inputcoords,inputcoords_solv,inputcoords_solu
+    character(len=:),allocatable :: inputcoords
     character(len=:),allocatable :: wbofile
     character(len=:),allocatable :: atlist
     character(len=:),allocatable :: chargesfilename
@@ -385,20 +390,20 @@ module crest_data
 
     !>--- property data objects
     type(protobj) :: ptb
-    type(protobj) :: ptb_solvent
-    type(protobj) :: ptb_solute
 
     !>--- saved constraints
     type(constra) :: cts
 
     !>--- NCI mode data
-    real(wp) :: potscal
+    real(wp) :: potscal = 1.0_wp
+    real(wp) :: potpad  = 0.0_wp
+    character(len=:),allocatable :: potatlist
 
     !>--- Nanoreactor data
     real(wp) :: rdens     !reactor density
     real(wp) :: tempfermi = 6000.0d0 !logfermi temperature
 
-    !>--- Entropy static MTDs object
+    !>--- Entropy static MTDs (umbrella sampling) object
     type(entropyMTD) :: eMTD
     real(wp) :: XH3 = 0
     real(wp) :: kappa = 1.5_wp   !> vM-kernel discretization
@@ -408,15 +413,13 @@ module crest_data
 
     !>--- reference structure data (the input structure)
     type(refdata) :: ref
-    type(refdata) :: qcg_solvent
-    type(refdata) :: qcg_solute
 
     !>--- QCG data
-    integer           :: qcg_runtype = 0      !> Default is grow, 1= ensemble & opt, 2= e_solv, 3= g_solv
-    integer           :: nsolv = 0            !> Number of solventmolecules
-    integer           :: nqcgclust = 0        !> Number of cluster to be taken
-    integer           :: max_solv = 0         !> Maximal number of solvents added, if none is given
-    integer           :: ensemble_method = -1 !> Default -1 for qcgmtd, 0= crest, 1= standard MD, 2= MTD
+    integer :: qcg_runtype = 0      !> Default is grow, 1= ensemble & opt, 2= e_solv, 3= g_solv
+    integer :: nsolv = 0            !> Number of solventmolecules
+    integer :: nqcgclust = 0        !> Number of cluster to be taken
+    integer :: max_solv = 0         !> Maximal number of solvents added, if none is given
+    integer :: ensemble_method = -1 !> Default -1 for qcgmtd, 0= crest, 1= standard MD, 2= MTD
     character(len=:), allocatable :: directed_file !name of the directed list
     character(len=64), allocatable :: directed_list(:,:) !How many solvents at which atom to add
     integer, allocatable :: directed_number(:) !Numbers of solvents added per defined atom
@@ -427,9 +430,9 @@ module crest_data
     character(len=5) :: docking_qcg_flag = '--qcg'
 
     !>--- clustering data
-    integer :: maxcluster = 0  !> maximum number of clusters to be generated
-    integer :: nclust = 0      !> fixed number of clusters (unly used if !=0)
-    integer :: pccap = 100     !> maximum number of principal components used for clustering
+    integer  :: maxcluster = 0  !> maximum number of clusters to be generated
+    integer  :: nclust = 0      !> fixed number of clusters (unly used if !=0)
+    integer  :: pccap = 100     !> maximum number of principal components used for clustering
     real(wp) :: pcthr = 0.85d0
     real(wp) :: pcmin = 0.05d0
     real(wp) :: csthr = 0.80d0
@@ -444,7 +447,7 @@ module crest_data
     character(len=:),allocatable :: biasfile
     real(wp) :: rthr2 = 0.3_wp    !>  Discard all structures with a bias smaller than this
     real(wp) :: kshift = 3.0_wp   !>  Shift of the k_i (in kcal/mol)
-    integer :: kshiftnum = 4      !>  try 5 different kshift (if not specified otherwise
+    integer  :: kshiftnum = 4     !>  try 5 different kshift (if not specified otherwise)
     real(wp) :: gescoptlev = 2.0_wp
 
     !>--- DFT driver arguments [DEPRECATED]
@@ -468,6 +471,19 @@ module crest_data
     type(lwoniom_input),allocatable :: ONIOM_input
     !================================================!
 
+    !>--- msreact mode settings
+    logical :: msnoiso =.false. ! print only dissociated structures in msreact
+    logical :: msiso =.false. ! only print non-dissociated structures in msreact
+    logical :: msmolbar =.false. ! sort out duplicates by molbar
+    logical :: msinchi =.false. ! sort out duplicates by inchi
+    logical :: mslargeprint=.false. ! dont remove temporary files
+    logical :: msattrh=.true. ! add attractive potential for H-atoms
+    integer :: msnbonds = 3 ! distance of bonds up to nonds are stretched
+    integer :: msnshifts = 0 ! number of random shifts applied to whole mol
+    integer :: msnshifts2 = 0 ! number of random shifts applied to whole mol
+    integer :: msnfrag = 0 !number of fragments that are printed in msreact mode
+    character(len=80) :: msinput = '' !name of input file for msreact
+
     !>--- general logical data
     logical :: allrot = .true.       !> use all rotational constants for check instead of mean?
     logical :: altopt = .false.
@@ -483,6 +499,7 @@ module crest_data
     logical :: compareens            !> try to correlate 2 given Ensemble files
     logical :: confgo                !> perform only the CREGEN routine ?
     logical :: constrain_solu        !> constrain the solute
+    logical :: crest_ohess = .false. !> append numerical Hessian after optimization
     logical :: doNMR                 !> determine NMR equivalencies in CREGEN ?
     logical :: dryrun = .false.      !> dryrun to print settings
     logical :: ENSO                  !> some options for usage of CREST within ENSO
@@ -505,7 +522,7 @@ module crest_data
     logical :: legacy = .false.       !> switch between the original system call routines of crest and newer, e.g. tblite implementations
     logical :: metadynset            !> is the number of MTDs already set (V2) ?
     logical :: methautocorr          !> try to automatically include Methyl equivalencies in CREGEN ?
-    logical :: multilevelopt         !> perform the multileveloptimization
+    logical :: multilevelopt =.true. !> perform the multileveloptimization
     logical :: newcregen = .false.   !> use the CREGEN rewrite
     logical :: NCI                   !> NCI special usage
     logical :: niceprint             !> make a nice progress-bar printout
@@ -536,6 +553,8 @@ module crest_data
     logical :: reweight = .false.    !> reweight structures on the fly after optimizations (i.e. do SPs)?
     logical :: riso = .false.        !> take only isomers in reactor mode
     logical :: rotamermds            !> do additional MDs after second  multilevel OPT step in V2 ?
+    logical :: refine_presort = .false.  !> run CREGEN at the beginning of crest_refine?
+    logical :: refine_esort   = .false.  !> if CREGEN is run after crest_refine, only sort energy?
     logical :: sameRandomNumber = .false. !> QCG related, choose same random number for iff
     logical :: scallen               !> scale the automatically determined MD length by some factor?
     logical :: scratch               !> use scratch directory
@@ -561,7 +580,6 @@ module crest_data
     logical :: water = .false.       !> true if water is used as solvent (only QCG)
     logical :: wallsetup = .false.   !> set up a wall potential?
     logical :: wbotopo = .false.     !> set up topo with WBOs
-
   contains
     procedure :: allocate => allocate_metadyn
     procedure :: deallocate => deallocate_metadyn
@@ -801,12 +819,24 @@ contains  !> MODULE PROCEDURES START HERE
     class(refdata) :: self
     type(coord) :: mol
     mol%nat = self%nat
-    mol%at = self%at
-    mol%xyz = self%xyz
+    if(allocated(self%at)) mol%at = self%at
+    if(allocated(self%xyz)) mol%xyz = self%xyz
     mol%chrg = self%ichrg
     mol%uhf = self%uhf
     return
   end subroutine ref_to_mol
+
+  subroutine ref_load_mol(self,mol)
+    implicit none
+    class(refdata) :: self
+    type(coord) :: mol
+    self%nat    = mol%nat 
+    self%at     = mol%at  
+    self%xyz    = mol%xyz 
+    self%ichrg  = mol%chrg
+    self%uhf    = mol%uhf 
+    return
+  end subroutine ref_load_mol
 
 !========================================================================================!
 !========================================================================================!
@@ -840,6 +870,8 @@ contains  !> MODULE PROCEDURES START HERE
     if (index(flag,'tight') .ne. 0) optlev = 1.0d0
     if (index(flag,'verytight') .ne. 0) optlev = 2.0d0
     if (index(flag,'vtight') .ne. 0) optlev = 2.0d0
+    if (index(flag,'extreme') .ne. 0) optlev = 3.0d0 
+    if (index(flag,'3') .ne. 0) optlev = 3.0d0
     if (index(flag,'2') .ne. 0) optlev = 2.0d0
     if (index(flag,'1') .ne. 0) optlev = 1.0d0
     if (index(flag,'0') .ne. 0) optlev = 0.0d0
@@ -903,7 +935,7 @@ contains  !> MODULE PROCEDURES START HERE
     allocate (self%temps(nt))
     dum1 = self%trange(1)
     do i = 1,nt
-      self%temps(i) = dum1
+      self%temps(i) = max(dum1,1.0_wp) !> never do 0 K
       dum1 = dum1+self%trange(3)
     end do
     return

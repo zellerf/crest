@@ -88,15 +88,7 @@ program CREST
 !> SOME I/O STUFF
 !=========================================================================================!
 !>--- check for the coord file in the working directory
-  if (env%crestver .eq. crest_solv) then
-    inquire (file='solute',exist=ex1)
-    inquire (file='solvent',exist=ex2)
-    if (.not.ex1) then
-      error stop 'No solute file found. Exit.'
-    else if (.not.ex2) then
-      error stop 'No solvent file found. Exit.'
-    end if
-  else
+  if (env%crestver /= crest_solv) then
     inquire (file='coord',exist=ex)
     if (.not.ex) then
       error stop 'No coord file found. Exit.'
@@ -119,7 +111,10 @@ program CREST
       end if
     end if
     if (env%newcregen) then
+      block
+      use cregen_interface
       call newcregen(env,0)
+      end block
     else
       call cregen2(env)
     end if
@@ -212,7 +207,8 @@ program CREST
 !>--- wrapper for the thermo routine
   case (p_thermo)
     call tim%start(4,'')
-    call thermo_mini(env)
+    !call thermo_mini(env)
+    call thermo_standalone(env)
     call tim%stop(4)
     call propquit(tim)
 !>--- ensemble merging tool
@@ -288,6 +284,12 @@ program CREST
 
   case (crest_rigcon) !> rule-based conformer generation
     call crest_rigidconf(env,tim)
+
+  case (crest_trialopt) !> test optimization standalone
+    call trialOPT(env)
+
+  case (crest_ensemblesp) !> singlepoints along ensemble
+    call crest_ensemble_singlepoints(env,tim)    
 
   case (crest_test)
     call crest_playground(env,tim)

@@ -19,29 +19,24 @@ set(_pkg "TBLITE")
 set(_url "https://github.com/tblite/tblite")
 
 if(NOT DEFINED "${_pkg}_FIND_METHOD")
-  if(DEFINED "${PROJECT_NAME}-dependency-method")
-    set("${_pkg}_FIND_METHOD" "${${PROJECT_NAME}-dependency-method}")
-  else()
-    set("${_pkg}_FIND_METHOD" "cmake" "pkgconf" "subproject" "fetch")
-  endif()
-  set("_${_pkg}_FIND_METHOD")
+  set("${_pkg}_FIND_METHOD" "subproject" "cmake" "fetch" "pkgconf")
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/crest-utils.cmake")
 
+set(temp_with_tests ${WITH_TESTS}) # Save the current value of WITH_TESTS
+set(WITH_TESTS FALSE CACHE BOOL "Temporarily disable tests for the tblite subproject" FORCE)
+set(WITH_API FALSE)
 crest_find_package("${_lib}" "${${_pkg}_FIND_METHOD}" "${_url}")
 
+set(found FALSE)
 if(TARGET "tblite::tblite")
   set (found TRUE)
-else()
-  set (found FALSE)
 endif()
-message("-- Found tblite: ${found}")
+message(STATUS "Found tblite: ${found}")
 
-if(DEFINED "_${_pkg}_FIND_METHOD")
-  unset("${_pkg}_FIND_METHOD")
-  unset("_${_pkg}_FIND_METHOD")
-endif()
+set(WITH_TESTS ${temp_with_tests} CACHE BOOL "Enable tests for the main project" FORCE)
+
 unset(_lib)
 unset(_pkg)
 unset(_url)

@@ -149,6 +149,15 @@ subroutine crest_optimization(env,tim)
   deallocate (grad)
 !========================================================================================!
   call tim%stop(14)
+
+!========================================================================================!
+!>--- append numerical hessian calculation
+  if( io == 0 .and. env%crest_ohess )then
+    call env%ref%load(molnew)      !> load the optimized geometry
+    call crest_numhess(env,tim) !> run the numerical hessian
+  endif
+
+!========================================================================================!
   return
 end subroutine crest_optimization
 
@@ -184,6 +193,7 @@ subroutine crest_ensemble_optimization(env,tim)
   real(wp),allocatable :: eread(:)
   real(wp),allocatable :: xyz(:,:,:)
   integer,allocatable  :: at(:)
+  character(len=10),allocatable :: comments(:)
   character(len=80) :: atmp
   real(wp) :: percent
   character(len=52) :: bar
@@ -227,6 +237,21 @@ subroutine crest_ensemble_optimization(env,tim)
   write (stdout,'(1x,a,i0,a,1x,a)') 'Optimizing all ',nall,' structures of file',trim(ensnam)
   !>--- call the loop
   call crest_oloop(env,nat,nall,at,xyz,eread,.true.)
+
+!========================================================================================!
+!>--- output
+  write(stdout,'(/,a,a,a)') 'Rewriting ',ensemblefile,' in the correct order'// &
+  & ' (failed optimizations are assigned an energy of +1.0)'
+!>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<!
+!>--- Back to Angstroem
+  xyz = xyz * bohr
+!>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<!
+  allocate(comments(nall))
+  do i=1,nall
+     comments(i) = ''
+     if(eread(i) > 0.0_wp) comments(i) = '!failed'
+  enddo
+  call wrensemble(ensemblefile,nat,nall,at,xyz,eread,comments)
 
   deallocate (eread,at,xyz)
   write(stdout,'(/,a,a,a)') 'Optimized ensemble written to <',ensemblefile,'>'

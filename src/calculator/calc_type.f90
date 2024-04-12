@@ -25,7 +25,7 @@ module calc_type
   use tblite_api
   use gfn0_api
   use gfnff_api,only:gfnff_data
-  use xhcff_api,only:pv_calculator
+  use xhcff_api,only:xhcff_calculator
 !>--- other types
   use orca_type
   use lwoniom_module
@@ -123,20 +123,24 @@ module calc_type
     logical  :: saveint = .false.
     character(len=:),allocatable :: solvmodel
     character(len=:),allocatable :: solvent
+!>--- Some optional file name storages
+    character(len=:),allocatable :: parametrisation
+    logical  :: restart = .false.  !> restart option (some potentials can do this)
+    character(len=:),allocatable :: restartfile
+    character(len=:),allocatable :: refgeo
 
-    !> tblite data
+!>--- tblite data
     type(tblite_data),allocatable :: tblite
 
-    !> GFN0-xTB data
+!>--- GFN0-xTB data
     type(gfn0_data),allocatable          :: g0calc
     integer :: nconfig = 0
     integer,allocatable :: config(:)
     real(wp),allocatable :: occ(:)
 
-    !> GFN-FF data
+!>--- GFN-FF data
     type(gfnff_data),allocatable :: ff_dat
 
-    !> XHCFF data
     integer :: ngrid = 230             !>  lebedev grid points per atom
     integer :: plvl = 0           !>  printlevel of xhcff calculator
     real(wp) :: extpressure = 0.0_wp   !>  hydorstatic pressure in Gpa
@@ -160,6 +164,7 @@ module calc_type
     procedure :: printid => calculation_settings_printid
     procedure :: info => calculation_settings_info
     procedure :: create => create_calclevel_shortcut
+    procedure :: norestarts => calculation_settings_norestarts
   end type calculation_settings
 !=========================================================================================!
 
@@ -213,6 +218,7 @@ module calc_type
     real(wp) :: hmax_opt = 5.0_wp
     real(wp) :: acc_opt = 1.0_wp
     real(wp) :: maxerise = 1.0e-5_wp
+    real(wp) :: hguess = 0.02_wp !> Hessian guess (for some optimizers)
     logical  :: exact_rf = .false.
     logical  :: average_conv = .false.
     logical  :: tsopt = .false.
@@ -226,7 +232,7 @@ module calc_type
     logical :: pr_energies = .false.
     integer :: eout_unit = stdout
     character(len=:),allocatable :: elog
-
+    
 !>--- ONIOM calculator data
     type(lwoniom_data),allocatable :: ONIOM
     type(coord),allocatable :: ONIOMmols(:)
@@ -355,8 +361,6 @@ contains  !>--- Module routines start here
     self%ngrid = 230
     self%extpressure = 0.0_wp
     self%proberad = 1.5_wp
-    self%plvl = 0
-    self%scaling = 1.0_wp
 
     self%ONIOM_highlowroot = 0
     self%ONIOM_id = 0
@@ -584,7 +588,7 @@ contains  !>--- Module routines start here
     if (self%nfreeze > 0) then
        nat = size(grad,2)
        if(nat == self%nfreeze)then
-         error stop '**ERROR** Must not freeze all atoms!'
+         error stop '*** ERROR *** Must not freeze all atoms!'
        endif 
        do i =1,nat
          if(self%freezelist(i)) grad(:,i) = 0.0_wp
@@ -608,6 +612,20 @@ contains  !>--- Module routines start here
     allocate (self%config(l))
     self%config = config
   end subroutine calculation_settings_addconfig
+
+!=========================================================================================!
+
+  subroutine calculation_settings_norestarts(self)
+!*************************************************
+!* remove restart options from this calculation
+!*************************************************
+    implicit none
+    class(calculation_settings) :: self
+    self%restart = .false.
+    if (allocated(self%refgeo)) deallocate (self%refgeo)
+    if (allocated(self%restartfile)) deallocate(self%restartfile)
+  end subroutine calculation_settings_norestarts
+
 
 !=========================================================================================!
 
@@ -695,6 +713,8 @@ contains  !>--- Module routines start here
           !> If one of this type is already in the mapping, duplicate the calculator and add it
           call calculator%deallocate()
           calculator = self%calcs(j)
+          !> However, we MUST not use restart I/O options for duplicates!
+          call calculator%norestarts()
           call self%add(calculator)
           newid = self%ncalculations
           k = k+1
@@ -723,9 +743,9 @@ contains  !>--- Module routines start here
         self%calcs(newid)%weight = 0.0_wp
 
         !> Check if the ONIOM fragment has a charge attached!
-        !if(allocated(self%ONIOM%fragment(i)%chrg))then
-        !  self%calcs(newid)%chrg = self%ONIOM%fragment(i)%chrg
-        !endif
+        if(allocated(self%ONIOM%fragment(i)%chrg))then
+          self%calcs(newid)%chrg = self%ONIOM%fragment(i)%chrg
+        endif 
 
       end do
     end do

@@ -19,7 +19,7 @@
 
 !> NOTE: This is work in progress, not all input conventions have been set yet
 !========================================================================================!
-!> Routines contained here are for parsing 'top level' settings that will 
+!> Routines contained here are for parsing 'top level' settings that will
 !> enter the env systemdata object
 
 module parse_maindata
@@ -27,6 +27,7 @@ module parse_maindata
   !> modules for data storage in crest
   use crest_data
   use crest_restartlog
+  use strucrd,only:coord
   !> modules used for parsing the root_object
   !>
   use parse_keyvalue,only:keyvalue,valuetypes
@@ -57,7 +58,7 @@ contains   !> MODULE PROCEDURES START HERE
       call parse_main_c(env,kv%key,kv%value_c)
     end select
 !> other, with multiple or raw type
-    select case(kv%key)
+    select case (kv%key)
     case ('optlev','ancopt_level')
       env%optlev = optlevnum(kv%rawvalue)
     end select
@@ -68,6 +69,12 @@ contains   !> MODULE PROCEDURES START HERE
     character(len=*) :: key
     real(wp) :: val
     select case (key)
+    case ('wscal')
+      env%potscal = val
+      env%wallsetup = .true.
+    case ('wpad')
+      env%potpad = val
+      env%wallsetup = .true.
 
     end select
     return
@@ -90,6 +97,7 @@ contains   !> MODULE PROCEDURES START HERE
     type(systemdata) :: env
     character(len=*) :: key
     character(len=*) :: val
+    type(coord) :: mol
     select case (key)
     case ('bin','binary')
       env%ProgName = val
@@ -107,10 +115,13 @@ contains   !> MODULE PROCEDURES START HERE
         env%preopt = .false.
         env%crestver = crest_sp
         env%testnumgrad = .true.
-      case ('ancopt','optimize')
+      case ('ancopt','optimize','ohess')
         env%preopt = .false.
         env%crestver = crest_optimize
         env%optlev = 0.0_wp
+        if(val.eq.'ohess')then
+          env%crest_ohess=.true.
+        endif   
       case ('ancopt_ensemble','optimize_ensemble','mdopt')
         env%preopt = .false.
         env%crestver = crest_mdopt2
@@ -118,6 +129,10 @@ contains   !> MODULE PROCEDURES START HERE
       case ('screen_ensemble','screen')
         env%preopt = .false.
         env%crestver = crest_screen
+      case ('ensemble_singlepoints','ensemblesp','mdsp')
+        env%preopt = .false.
+        env%crestver = crest_ensemblesp
+
       case ('md','mtd','metadynamics','dynamics')
         env%preopt = .false.
         env%crestver = crest_moldyn
@@ -136,6 +151,12 @@ contains   !> MODULE PROCEDURES START HERE
         env%preopt = .false.
         env%crestver = crest_imtd
         env%runver = 1
+      case ('nci-mtd','nci')
+        env%NCI = .true.
+        env%runver = 4
+        env%autozsort = .false.
+        env%performCross = .false.
+        env%rotamermds = .false.
       case ('entropy','imtd-stmd')
         env%crestver = crest_imtd  !> the entropy mode acts as subtype of the crest_imtd algo
         env%properties = abs(p_CREentropy)
@@ -163,12 +184,19 @@ contains   !> MODULE PROCEDURES START HERE
     case ('ensemble_input','ensemble','input_ensemble')
       env%ensemblename = val
       env%inputcoords = val
-    case ('input')
+    case ('input','structure')
       env%inputcoords = val
+      call mol%open(val)
+      call env%ref%load(mol)
+
     case ('constraints','xtbconstraints','xtbinput') !> equivalent to --cinp
       env%constraints = val
     case ('rigidconf_file')
       env%rigidconf_userfile = val
+
+    case ('watlist','wat')
+      env%potatlist = val
+      env%wallsetup = .true.
     end select
     return
   end subroutine parse_main_c
@@ -187,29 +215,42 @@ contains   !> MODULE PROCEDURES START HERE
     case ('notopo')
       env%checktopo = .not.val
     case ('restart')
-      if(val)then
+      if (val) then
         call read_restart(env)
-      endif
+      end if
+    case ('multilevelopt')
+      env%multilevelopt = val 
+    case ('refine_presort')
+      env%refine_presort = val
     end select
     return
   end subroutine parse_main_bool
 !========================================================================================!
+
   subroutine parse_main_blk(env,blk)
+!**************************************
+!* Some shorter blocks are not defined
+!* in separate source files. They can
+!* be found below.
+!**************************************
     implicit none
     type(systemdata) :: env
     type(datablock) :: blk
     select case (blk%header)
     case ('cregen')
       call parse_cregen(env,blk)
-    case('confsolv')
+    case ('confsolv')
       call parse_confsolv(env,blk)
+    case ('thermo')
+      call parse_thermo(env,blk)
     end select
   end subroutine parse_main_blk
+
 !========================================================================================!
- subroutine parse_cregen(env,blk)
+  subroutine parse_cregen(env,blk)
 !****************************************
 !* parse settings for the CREGEN routine
-!****************************************  
+!****************************************
     implicit none
     type(systemdata) :: env
     type(datablock) :: blk
@@ -218,19 +259,19 @@ contains   !> MODULE PROCEDURES START HERE
 !>--- parse the arguments
     do i = 1,blk%nkv
       kv = blk%kv_list(i)
-    select case (kv%key)
-    case ('ewin') 
-      env%ewin = kv%value_f
-    case ('ethr')
-      env%ethr = kv%value_f
-    case ('rthr')
-      env%rthr = kv%value_f
-    case ( 'bthr')
-      env%bthr2 = kv%value_f
-    case ('eqv','nmr') 
-      env%doNMR = kv%value_b 
-    end select
-    enddo
+      select case (kv%key)
+      case ('ewin')
+        env%ewin = kv%value_f
+      case ('ethr')
+        env%ethr = kv%value_f
+      case ('rthr')
+        env%rthr = kv%value_f
+      case ('bthr')
+        env%bthr2 = kv%value_f
+      case ('eqv','nmr')
+        env%doNMR = kv%value_b
+      end select
+    end do
   end subroutine parse_cregen
 
 !========================================================================================!
@@ -240,38 +281,88 @@ contains   !> MODULE PROCEDURES START HERE
     type(systemdata) :: env
     type(datablock) :: blk
     type(keyvalue) :: kv
-    integer :: i    
+    integer :: i
 !>--- add ConfSolv as refinement level to give a ΔΔGsoln
     call env%addrefine(refine%ConfSolv)
+    !env%refine_presort = .true.
+    env%ewin = 100.0_wp
 
 !>--- parse the arguments
     do i = 1,blk%nkv
       kv = blk%kv_list(i)
-    select case (kv%key)
-    case ('pid')
-      if(.not.allocated(cs_pid)) allocate(cs_pid)
-      cs_pid = kv%value_i
-    case ('bin')
-       cs_bin = trim(kv%value_c)
-    case ( 'port')
-       if(.not.allocated(cs_port)) allocate(cs_port)
-       cs_port = kv%value_i
-    case ('solvent') 
-    !> to define a single solvent like: solvent = ['water','O']
-       if(kv%na == 2)then
-         cs_solvent = trim(kv%value_rawa(1))
-         cs_smiles = trim(kv%value_rawa(2)) 
-       else
-         cs_solvent = kv%value_c
-       endif
-    case ('solvent_name')
-       cs_solvent = kv%value_c
-    case ('solvent_smiles')
-       cs_smiles = kv%value_c
-    case ('model_path','param','checkpoint')
-       cs_param = kv%value_c
-    end select
-    enddo
+      select case (kv%key)
+      case ('pid')
+        if (.not.allocated(cs_pid)) allocate (cs_pid)
+        cs_pid = kv%value_i
+      case ('bin')
+        cs_bin = trim(kv%value_c)
+      case ('port')
+        if (.not.allocated(cs_port)) allocate (cs_port)
+        cs_port = kv%value_i
+      case ('solvent')
+        !> to define a single solvent like: solvent = ['water','O']
+        if (kv%na == 2) then
+          cs_solvent = trim(kv%value_rawa(1))
+          cs_smiles = trim(kv%value_rawa(2))
+        else if(index(kv%value_c,'.csv').ne.0)then
+          cs_solvfile = kv%value_c
+        else
+          cs_solvent = kv%value_c
+        end if
+      case('solvent_csv','solvfile')
+        cs_solvfile = kv%value_c
+      case ('solvent_name')
+        cs_solvent = kv%value_c
+      case ('solvent_smiles')
+        cs_smiles = kv%value_c
+      case ('model_path','param','checkpoint')
+        cs_param = kv%value_c
+      end select
+    end do
   end subroutine parse_confsolv
+
+!========================================================================================!
+
+  subroutine parse_thermo(env,blk)
+!****************************************
+!* parse settings for the Thermo routine
+!****************************************
+    implicit none
+    type(systemdata) :: env
+    type(datablock) :: blk
+    type(keyvalue) :: kv
+    integer :: i
+!>--- parse the arguments
+    do i = 1,blk%nkv
+      kv = blk%kv_list(i)
+      select case (kv%key)
+      case ('ithr','freq_ithr','freq_invert')
+        env%thermo%ithr = kv%value_f
+      case ('fscal','freq_scal')
+        env%thermo%fscal = kv%value_f
+      case ('sthr','freq_interpol')
+        env%thermo%sthr = kv%value_f
+      case ('trange')
+        if (kv%na >= 2) then
+          env%thermo%trange(1) = minval(kv%value_fa(1:2),1)
+          env%thermo%trange(2) = maxval(kv%value_fa(1:2),1) 
+        endif  
+        if(kv%na >= 3)then
+          env%thermo%trange(3) = kv%value_fa(3)
+        endif 
+      case ('tstep')
+        env%thermo%trange(3) = kv%value_f
+
+      case ('input','coords')
+        env%thermo%coords = kv%value_c
+        if(allocated(env%thermo%vibfile)) env%properties = p_thermo
+      case ('freq_input','vibs','hessian')
+        env%thermo%vibfile = kv%value_c 
+        if(allocated(env%thermo%coords)) env%properties = p_thermo
+      end select
+    end do
+  end subroutine parse_thermo
+
+!========================================================================================!
 !========================================================================================!
 end module parse_maindata

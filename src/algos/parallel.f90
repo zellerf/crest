@@ -301,12 +301,12 @@ subroutine crest_oloop(env,nat,nall,at,xyz,eread,dump)
         write (atmp,'(1x,"Etot=",f16.10,1x,"g norm=",f12.8)') energy,gnorm
         molsnew(job)%comment = trim(atmp)
         call molsnew(job)%append(ich)
-        call calc_eprint(calculations(job),energy,calculations(job)%etmp,ich2)
+        call calc_eprint(calculations(job),energy,calculations(job)%etmp,gnorm,ich2)
       end if
       eread(zcopy) = energy
       xyz(:,:,zcopy) = molsnew(job)%xyz(:,:)
     else
-      eread(zcopy) = 0.0_wp
+      eread(zcopy) = 1.0_wp
     end if
     k = k+1
     !>--- print progress
@@ -364,7 +364,6 @@ subroutine crest_oloop_pr_progress(env,total,current)
   type(systemdata),intent(inout) :: env
   integer,intent(in) :: total,current
   real(wp) :: percent
-  character(len=52) :: bar
   character(len=5) :: atmp
   real(wp),save :: increment
   real(wp),save :: progressbarrier
@@ -374,8 +373,7 @@ subroutine crest_oloop_pr_progress(env,total,current)
     progressbarrier = 0.0_wp
     if (env%niceprint) then
       percent = 0.0_wp
-      call progbar(percent,bar)
-      call printprogbar(percent,bar)
+      call printprogbar(percent)
     end if
     increment = 10.0_wp
     if(total > 1000) increment = 7.5_wp
@@ -386,8 +384,7 @@ subroutine crest_oloop_pr_progress(env,total,current)
 
   else if (current <= total .and. current > 0) then !> the regular printout case
     if (env%niceprint) then
-      call progbar(percent,bar)
-      call printprogbar(percent,bar)
+      call printprogbar(percent)
 
     else if (.not.env%legacy) then
       if(percent >= progressbarrier)then
@@ -441,7 +438,6 @@ subroutine crest_search_multimd(env,mol,mddats,nsim)
   logical :: pr,ex
   integer :: T
   real(wp) :: percent
-  character(len=52) :: bar
   character(len=80) :: atmp
   character(len=*),parameter :: mdir = 'MDFILES'
 
@@ -502,7 +498,7 @@ subroutine crest_search_multimd(env,mol,mddats,nsim)
 
   !>--- run the MDs
   !$omp parallel &
-  !$omp shared(env,calculations,mddats,mol,pr,percent,bar,ich, moltmps)
+  !$omp shared(env,calculations,mddats,mol,pr,percent,ich, moltmps)
   !$omp single
   do i = 1,nsim
 
@@ -595,7 +591,7 @@ subroutine crest_search_multimd_init(env,mol,mddat,nsim)
   integer :: i,io
   logical :: pr
 !=======================================================!
-  type(calcdata) :: calc
+  type(calcdata),target :: calc
   type(shakedata) :: shk
 
   real(wp) :: energy
@@ -628,6 +624,12 @@ subroutine crest_search_multimd_init(env,mol,mddat,nsim)
       shk%shake_mode = env%mddat%shk%shake_mode
       call move_alloc(calc%calcs(1)%wbo,shk%wbo)
     end if
+
+    if(calc%nfreeze > 0)then
+      shk%freezeptr => calc%freezelist
+    else
+      nullify(shk%freezeptr)
+    endif
 
     shk%shake_mode = env%shake
     mddat%shk = shk
@@ -668,7 +670,7 @@ subroutine crest_search_multimd_init2(env,mddats,nsim)
   type(systemdata),intent(inout) :: env
   type(mddata) :: mddats(nsim)
   integer :: nsim
-  integer :: i,io
+  integer :: i,io,j
   logical :: ex
 !========================================================!
   type(mtdpot),allocatable :: mtds(:)
@@ -701,6 +703,14 @@ subroutine crest_search_multimd_init2(env,mddats,nsim)
       mddats(i)%npot = 1
       allocate (mddats(i)%mtd(1),source=mtds(i))
       allocate (mddats(i)%cvtype(1),source=cv_rmsd)
+      !> if necessary exclude atoms from RMSD bias
+      if(sum(env%includeRMSD) /= env%ref%nat)then
+         if(.not.allocated(mddats(i)%mtd(1)%atinclude)) &
+         & allocate (mddats(i)%mtd(1)%atinclude( env%ref%nat ), source=.true.  )
+         do j=1,env%ref%nat
+           if(env%includeRMSD(j) .ne.1) mddats(i)%mtd(1)%atinclude(j) = .false. 
+         enddo
+      endif
     end if
   end do
   if (allocated(mtds)) deallocate (mtds)
@@ -734,7 +744,6 @@ subroutine crest_search_multimd2(env,mols,mddats,nsim)
   logical :: pr,ex
   integer :: T
   real(wp) :: percent
-  character(len=52) :: bar
   character(len=80) :: atmp
   character(len=*),parameter :: mdir = 'MDFILES'
 
@@ -787,7 +796,7 @@ subroutine crest_search_multimd2(env,mols,mddats,nsim)
 
 !>--- run the MDs
   !$omp parallel &
-  !$omp shared(env,calculations,mddats,mols,pr,percent,bar,ich, moltmps,profiler)
+  !$omp shared(env,calculations,mddats,mols,pr,percent,ich, moltmps,profiler)
   !$omp single
   do i = 1,nsim
 
@@ -901,7 +910,7 @@ subroutine parallel_md_block_printout(MD,vz)
     end if
   end if
   if(allocated(MD%active_potentials))then
-      write (stdout,'(2x,"|   active potentials    :",i4," porential |")') size(MD%active_potentials,1)
+      write (stdout,'(2x,"|   active potentials    :",i4," potential    |")') size(MD%active_potentials,1)
   endif
   if (MD%simtype == type_mtd) then
     if (MD%cvtype(1) == cv_rmsd) then

@@ -63,6 +63,14 @@ subroutine protonate(env,tim)
 
   logical :: ex
 
+  interface
+    subroutine xtblmo(env, print)
+      import :: systemdata
+      type(systemdata) :: env
+      logical, optional :: print
+    end subroutine xtblmo
+  end interface
+
 !--- printout & clean directory
   call protclean
   call prothead
@@ -87,7 +95,7 @@ subroutine protonate(env,tim)
 
 !--- do the xTB calculation for the LMOs
   call tim%start(1,'LMO calc.')
-  call xtblmo(env)
+  call xtblmo(env,.true.)
   call tim%stop(1)
   inquire (file='coordprot.0',exist=ex)
   if (.not.ex) then
@@ -197,16 +205,17 @@ end subroutine protonate
 !--------------------------------------------------------------------------------------------
 ! A quick single point xtb calculation and calculate LMOs
 !--------------------------------------------------------------------------------------------
-subroutine xtblmo(env)
+subroutine xtblmo(env,print)
   use crest_parameters
   use iomod
   use crest_data
   implicit none
   type(systemdata) :: env
   character(len=80) :: fname
-  character(len=512) :: jobcall
+  character(len=:),allocatable :: jobcall
   integer :: io
   character(len=*),parameter :: pipe = ' > xtb.out 2>/dev/null'
+  logical, optional :: print ! leave the xtb.out file (e.g. for msreact mode)
 
 !---- setting threads
   if (env%autothreads) then
@@ -218,15 +227,17 @@ subroutine xtblmo(env)
 !---- jobcall
   write (*,*)
   write (*,'('' LMO calculation ... '')',advance='no')
-  write (jobcall,'(a,1x,a,1x,a,'' --sp --lmo'',1x,a)') &
-  &     trim(env%ProgName),trim(fname),trim(env%gfnver),trim(env%solv)
+  jobcall = trim(env%ProgName)
+  jobcall = trim(jobcall)//' '//trim(fname)
+  jobcall = trim(jobcall)//' '//trim(env%gfnver)
+  jobcall = trim(jobcall)//' --sp --lmo '//trim(env%solv) 
   jobcall = trim(jobcall)//trim(pipe)
   call command(trim(jobcall),io)
   write (*,'(''done.'')')
 
 !---- cleanup
   call remove(fname)
-  call remove('xtb.out')
+  if (.not. print) call remove('xtb.out')
   call remove('energy')
   call remove('charges')
   call remove('xtbrestart')

@@ -22,7 +22,7 @@ module utilities
   use ls_rmsd
   implicit none
   private
-  
+
   !> subroutines
   public :: boltz2
   public :: boltz
@@ -37,6 +37,7 @@ module utilities
   public :: revlin
   public :: TRJappendto_skipfirst
   public :: XYZappendto
+  public :: dumpenergies
 
   !> functions
   public :: lin
@@ -417,7 +418,6 @@ contains  !> MODULE PROCEDURES START HERE
     call rename('.setdgtmp',fname)
   end subroutine clear_setblock
 
-
 !========================================================================================!
 
   subroutine rdarg(str,arg,val)
@@ -519,6 +519,25 @@ contains  !> MODULE PROCEDURES START HERE
     close (funit)
     close (tunit)
   end subroutine XYZappendto
+
+!============================================================!
+
+  subroutine dumpenergies(filename,eread)
+!****************************
+!* write energies to a file
+!****************************
+    implicit none
+    character(len=*),intent(in) :: filename
+    real(wp),intent(in) :: eread(:)
+    integer :: ich,io,l,i
+
+    open (newunit=ich,file=filename)
+    l = size(eread,1)
+    do i = 1,l
+      write (ich,'(f25.15)') eread(i)
+    end do
+    close (ich)
+  end subroutine dumpenergies
 
 !========================================================================================!
 !========================================================================================!
