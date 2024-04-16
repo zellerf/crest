@@ -25,7 +25,7 @@ module calc_type
   use tblite_api
   use gfn0_api
   use gfnff_api,only:gfnff_data
-  use xhcff_api,only:xhcff_calculator
+  use xhcff_api,only:pv_calculator
 !>--- other types
   use orca_type
   use lwoniom_module
@@ -361,7 +361,9 @@ contains  !>--- Module routines start here
     self%ngrid = 230
     self%extpressure = 0.0_wp
     self%proberad = 1.5_wp
-
+    self%plvl = 0
+    self%scaling = 1.0_wp
+    
     self%ONIOM_highlowroot = 0
     self%ONIOM_id = 0
     return
