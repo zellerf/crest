@@ -138,8 +138,10 @@ contains  !> MODULE PROCEDURES START HERE
     iostatus = 0
     dum1 = 1.0_wp
     dum2 = 1.0_wp
+    if(n>0)then
     calc%etmp = 0.0_wp
     calc%grdtmp = 0.0_wp
+    endif
     !$omp end critical
 
 !**************************************
@@ -524,36 +526,52 @@ contains  !> MODULE PROCEDURES START HERE
     real(wp),allocatable :: gradr_tmp(:,:,:),gradl_tmp(:,:,:)
     real(wp),parameter :: step = 0.005_wp,step2 = 0.5_wp/step !0.00001_wp
     integer :: i,j,k,l,m,ii,jj
+    logical :: rddipoles
+    real(wp),allocatable :: dipr(:,:),dipl(:,:)
 
     hess = 0.0_wp
     io = 0
     mol%nat = nat
     mol%at = at
     mol%xyz = xyz
-
+    
     allocate (gradr(3,mol%nat),source=0.0_wp) !dummy
     allocate (gradl(3,mol%nat),source=0.0_wp) !dummy
 
     allocate (gradr_tmp(3,mol%nat,calc%ncalculations),source=0.0_wp)
     allocate (gradl_tmp(3,mol%nat,calc%ncalculations),source=0.0_wp)
 
+!>--- prepare potential dipole gradient readout
+    rddipoles = (any(calc%calcs(:)%rddip))
+    if(rddipoles)then
+      do m=1,calc%ncalculations
+        if(calc%calcs(m)%rddip)then
+          calc%calcs(m)%rddipgrad = .true. 
+          if(allocated(calc%calcs(m)%dipgrad)) deallocate(calc%calcs(m)%dipgrad)
+          allocate(calc%calcs(m)%dipgrad(3,nat*3))  
+        endif
+      enddo
+    endif
+
+!>--- actual numerical Hessian loop
     do i = 1,mol%nat
       do j = 1,3
         ii = (i-1)*3+j
-        !gradr = 0.0_wp
         mol%xyz(j,i) = mol%xyz(j,i)+step
         call engrad(mol,calc,er,gradr,io)
 
         gradr_tmp = calc%grdtmp
+        if(rddipoles) call get_dipoles(calc,dipr)
 
-        !gradl = 0.0_wp
         mol%xyz(j,i) = mol%xyz(j,i)-2.0_wp*step
         call engrad(mol,calc,el,gradl,io)
 
         gradl_tmp = calc%grdtmp
+        if(rddipoles) call get_dipoles(calc,dipl)
 
         mol%xyz(j,i) = mol%xyz(j,i)+step
 
+!>--- construct numerical Hessians from analytical gradients
         do m = 1,calc%ncalculations
           do k = 1,mol%nat
             do l = 1,3
@@ -562,10 +580,20 @@ contains  !> MODULE PROCEDURES START HERE
             end do
           end do
         end do
+
+!>--- create dipole gradients
+        if(rddipoles)then
+          do m=1,calc%ncalculations
+           if(calc%calcs(m)%rddip)then
+             calc%calcs(m)%dipgrad(1:3, ii) = (dipr(1:3,m) - dipl(1:3,m)) * step2           
+           endif
+          enddo
+        endif
+
       end do
     end do
 
-    !Symmetrize Hessian
+!>--- Symmetrize Hessian
     do m = 1,calc%ncalculations
       do i = 1,nat*3
         do j = i,nat*3
@@ -578,6 +606,8 @@ contains  !> MODULE PROCEDURES START HERE
 
     call engrad(mol,calc,el,gradl,io) !>- to get the gradient of the non-displaced s
 
+    if(allocated(dipl)) deallocate(dipl)
+    if(allocated(dipr)) deallocate(dipr)
     deallocate (gradl_tmp,gradr_tmp)
     deallocate (gradl,gradr)
     call mol%deallocate()
@@ -607,17 +637,33 @@ contains  !> MODULE PROCEDURES START HERE
     real(wp) :: energy,el,er
     real(wp),allocatable :: hess(:,:)
     logical :: consgeo
-    integer :: i,j,k,n3,io
+    integer :: i,j,k,n3,io,ncons
 
-    if (calc%nconstraints <= 0) return
+    ncons = calc%nconstraints
+    if (ncons <= 0) return
     !>--- skip if only nonadiabatic constraints
 
-    dummycalc = calc !> new dummy calculation
-    dummycalc%id = -1000  !> set to something arbitrary so that only constraints are considered
+    !> new dummy calculation
+    !> set to something arbitrary so that only constraints are considered
+    !> and copy the neccesities
+    dummycalc%id = -1000
     dummycalc%ncalculations = 0
     dummycalc%pr_energies = .false.
+    
+    !> copy the constraints
+    dummycalc%nfreeze = calc%nfreeze 
+    dummycalc%nconstraints = ncons
+    !$omp critical
+    allocate(dummycalc%cons( ncons ))
+    do i=1,ncons
+      dummycalc%cons(i) = calc%cons(i)   
+    enddo
+    if(calc%nfreeze > 0)then
+     dummycalc%freezelist = calc%freezelist
+    endif
     n3 = nat*3
     allocate (hess(n3,n3),source=0.0_wp)
+    !$omp end critical
 
     call numhess1(nat,at,xyz,dummycalc,hess,io)
 
@@ -628,7 +674,7 @@ contains  !> MODULE PROCEDURES START HERE
         phess(k) = phess(k)+0.5_wp*(hess(j,i)+hess(i,j))
       end do
     end do
-
+    
     deallocate (hess)
     return
   end subroutine constrhess
@@ -708,7 +754,6 @@ contains  !> MODULE PROCEDURES START HERE
       do i = 1,calc%ONIOM%nfrag
         l1 = calc%ONIOM%calcids(1,i)
         l2 = calc%ONIOM%calcids(2,i)
-        !j = calc%calcs(l1)%ONIOM_id
         natp = calc%ONIOMmols(l1)%nat
 
         call calc%ONIOM%fragment(i)%gradient_distribution(  &
@@ -720,6 +765,26 @@ contains  !> MODULE PROCEDURES START HERE
 #endif
   end subroutine calc_ONIOM_projection
 
+!==========================================================================================!
+
+   subroutine get_dipoles(calc,diptmp)
+!*********************************************
+!* Collect the x y and z dipole moments for
+!* each calculation level in one array diptmp
+!*********************************************
+       implicit none
+       type(calcdata),intent(inout) :: calc
+       real(wp),allocatable,intent(out) :: diptmp(:,:)
+       integer :: i,j,k,l,m
+
+       m = calc%ncalculations
+       allocate(diptmp(3,m), source=0.0_wp) 
+       do i=1,m
+         if(calc%calcs(i)%rddip)then
+            diptmp(1:3,i) = calc%calcs(i)%dipole(1:3)
+         endif
+       enddo
+   end subroutine get_dipoles
 !==========================================================================================!
 !==========================================================================================!
 end module crest_calculator
