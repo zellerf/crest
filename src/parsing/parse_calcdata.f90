@@ -301,6 +301,9 @@ contains !> MODULE PROCEDURES START HERE
     case ('gradfile')
       job%gradfile = val
 
+    case ('pressure_model')
+      job%pmodel = val
+
     case ('gradtype')
       select case (val)
       case ('engrad','xtb','orca')
