@@ -1,0 +1,652 @@
+Index: src/constraining.f90
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/constraining.f90 b/src/parsing/constraining.f90
+rename from src/constraining.f90
+rename to src/parsing/constraining.f90
+--- a/src/constraining.f90	
++++ b/src/parsing/constraining.f90	
+@@ -17,70 +17,6 @@
+ ! along with crest.  If not, see <https://www.gnu.org/licenses/>.
+ !================================================================================!
+ 
+-!!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-!!c  append the ".constrains" file to the setblock (ONLY USED IN OLD PARTS OF THE CODE)
+-!!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+-!subroutine ConstrainsToSET(fname,isplainxyz,constraints)
+-!  use setdgmod
+-!  use iomod
+-!  implicit none
+-!  character(len=*) :: fname
+-!  character(len=*) :: constraints
+-!  character(len=512) :: atmp,dg
+-!  character(len=256),allocatable :: strings(:)
+-!  character(len=128) :: key
+-!  real*8,allocatable  :: floats(:)
+-!  integer :: iost,ich
+-!  logical :: ex,isplainxyz
+-!
+-!  inquire (file=constraints,exist=ex)
+-!  if (.not. ex) return
+-!
+-!  if (isplainxyz) then
+-!    call appendto(constraints,fname)
+-!  else
+-!    open (newunit=ich,file=constraints)
+-!    allocate (floats(3),strings(3))
+-!    outer: do
+-!      read (ich,'(a)',iostat=iost) atmp
+-!      if (iost < 0) exit
+-!      !---- handle $set-blocks in .constrains
+-!      if (index(atmp,'$set') .ne. 0) then
+-!        setblock: do
+-!          read (ich,'(a)',iostat=iost) atmp
+-!          if (iost < 0) exit outer
+-!          atmp = adjustl(atmp)
+-!          if (index(atmp,'$end') .ne. 0) exit setblock
+-!          dg = trim(atmp)
+-!          call split_set_args(dg,atmp)
+-!          call setdg(fname,dg,trim(atmp))
+-!        end do setblock
+-!      end if
+-!      !---- handle all other blocks in .constrains
+-!      if ((index(atmp,'$') .ne. 0) .and. &
+-!      &  ((index(atmp,'$set') .eq. 0) .and. (index(atmp,'$end') .eq. 0))) then
+-!        !write(*,*) trim(atmp)
+-!        key = trim(atmp) !get the argument as the current reference block keyword
+-!        call setdg_block(fname,trim(key),trim(atmp)) !set it to the coord file
+-!        keyword: do
+-!          read (ich,'(a)',iostat=iost) atmp
+-!          if (iost < 0) exit outer
+-!          if (index(atmp,'$') .ne. 0) then !next keyword found
+-!            backspace (ich)
+-!            cycle outer
+-!          end if
+-!          !write(*,*) trim(atmp)
+-!          call setdg_block(fname,trim(key),trim(atmp))
+-!        end do keyword
+-!      end if
+-!    end do outer
+-!
+-!    deallocate (strings,floats)
+-!    close (ich)
+-!  end if
+-!  return
+-!end subroutine ConstrainsToSET
+-
+ !-----------------------------------------------------------------------------
+ ! sort the .constrains file
+ !-----------------------------------------------------------------------------
+Index: src/io.f
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/io.f b/src/deprecated/io.f
+rename from src/io.f
+rename to src/deprecated/io.f
+--- a/src/io.f	
++++ b/src/deprecated/io.f	
+@@ -380,30 +380,30 @@
+ ! minigrep: a grep subroutine that returns true or false, depending on
+ ! if the substring "str" is present in the file "fil"
+ !-------------------------------------------------------------------------
+-      subroutine gettime(fil,secs)
+-      implicit none
+-      real*8 :: secs
+-      real*8 :: floats(10)
+-      character(len=*) :: fil
+-      character(len=512) :: tmp,tmp2
+-      integer :: io,ich,n
+-      secs=0.0d0
+-      open(newunit=ich,file=fil)
+-      do
+-        read(ich,'(a)',iostat=io) tmp
+-        if(io < 0)exit
+-        if(index(tmp,'finished run on').ne.0)then
+-          read(ich,'(a)') tmp
+-          read(ich,'(a)') tmp
+-          read(ich,'(a)') tmp
+-          read(ich,'(a)') tmp
+-          call rdarg(tmp,'time:',tmp2)
+-          call readl(tmp2,floats,n)
+-        endif
+-      enddo
+-      secs=secs+floats(2)*86400.0d0  !days to seconds      
+-      secs=secs+floats(3)*3600.0d0   !hours to seconds
+-      secs=secs+floats(4)*60.0d0     !minutes to seconds
+-      secs=secs+floats(5)           
+-      return
+-      end subroutine gettime
++!      subroutine gettime(fil,secs)
++!      implicit none
++!      real*8 :: secs
++!      real*8 :: floats(10)
++!      character(len=*) :: fil
++!      character(len=512) :: tmp,tmp2
++!      integer :: io,ich,n
++!      secs=0.0d0
++!      open(newunit=ich,file=fil)
++!      do
++!        read(ich,'(a)',iostat=io) tmp
++!        if(io < 0)exit
++!        if(index(tmp,'finished run on').ne.0)then
++!          read(ich,'(a)') tmp
++!          read(ich,'(a)') tmp
++!          read(ich,'(a)') tmp
++!          read(ich,'(a)') tmp
++!          call rdarg(tmp,'time:',tmp2)
++!          call readl(tmp2,floats,n)
++!        endif
++!      enddo
++!      secs=secs+floats(2)*86400.0d0  !days to seconds      
++!      secs=secs+floats(3)*3600.0d0   !hours to seconds
++!      secs=secs+floats(4)*60.0d0     !minutes to seconds
++!      secs=secs+floats(5)           
++!      return
++!      end subroutine gettime
+Index: src/utilities.f
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/utilities.f b/src/deprecated/utilities.f
+rename from src/utilities.f
+rename to src/deprecated/utilities.f
+--- a/src/utilities.f	
++++ b/src/deprecated/utilities.f	
+@@ -17,6 +17,9 @@
+ ! along with crest.  If not, see <https://www.gnu.org/licenses/>.
+ !================================================================================!
+ 
++!TODO replace with utilmod.f90
++
++
+ !--- formerly in "lin.f"
+ ***********************************************************************
+ * address in packed array
+@@ -310,97 +313,3 @@
+       distcma=sqrt(dx*dx+dy*dy+dz*dz)   
+ 
+       end 
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+Index: src/optimize/type_anc.f90
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/optimize/type_anc.f90 b/src/optimize/optimize_type.f90
+rename from src/optimize/type_anc.f90
+rename to src/optimize/optimize_type.f90
+--- a/src/optimize/type_anc.f90	
++++ b/src/optimize/optimize_type.f90	
+@@ -20,15 +20,15 @@
+ ! Routines were adapted from the xtb code (github.com/grimme-lab/xtb)
+ ! under the Open-source software LGPL-3.0 Licencse.
+ !================================================================================!
+-module type_anc
++module optimize_type
+    use iso_fortran_env, only: wp=>real64
+    use optimize_maths, only: detrotra8
+    implicit none
+ 
+-   public :: tb_anc
++   public :: optimizer
+    private
+ 
+-   type tb_anc
++   type optimizer
+       integer  :: n    !< number of atoms
+       integer  :: n3   !< dimension of hessian
+       integer  :: nvar !< actual dimension
+@@ -45,13 +45,17 @@
+    procedure :: write => write_anc
+    procedure :: new => generate_anc_blowup
+    procedure :: get_cartesian
+-   end type tb_anc
++   end type optimizer
+ 
+-contains
++!========================================================================================!
++!========================================================================================!
++contains  !> MODULE PROCEDURES START HERE
++!========================================================================================!
+ !========================================================================================!
++
+ subroutine allocate_anc(self,n,nvar,hlow,hmax)
+    implicit none
+-   class(tb_anc),intent(inout)  :: self
++   class(optimizer),intent(inout)  :: self
+    integer,      intent(in)     :: n
+    integer,      intent(in)     :: nvar
+    integer                      :: n3
+@@ -70,10 +74,12 @@
+    allocate( self%coord(nvar),           source = 0.0_wp )
+    allocate( self%xyz(3,n),              source = 0.0_wp )
+ end subroutine allocate_anc
++
+ !========================================================================================!
++
+ subroutine deallocate_anc(self)
+    implicit none
+-   class(tb_anc),intent(inout) :: self
++   class(optimizer),intent(inout) :: self
+    self%n    = 0
+    self%n3   = 0
+    self%nvar = 0
+@@ -83,17 +89,18 @@
+    if (allocated(self%coord)) deallocate( self%coord )
+    if (allocated(self%xyz  )) deallocate( self%xyz   )
+ end subroutine deallocate_anc
++
+ !========================================================================================!
+ !> @brief print information about current approximate normal coordinates to unit
+ subroutine write_anc(self,iunit,comment)
+    implicit none
+-   class(tb_anc),   intent(in) :: self    !< approximate normal coordinates
++   class(optimizer),   intent(in) :: self    !< approximate normal coordinates
+    integer,         intent(in) :: iunit   !< file handle
+    character(len=*),intent(in) :: comment !< name of the variable
+    character(len=*),parameter  :: dfmt = '(1x,a,1x,"=",1x,g0)'
+ 
+    write(iunit,'(72(">"))')
+-   write(iunit,'(1x,"*",1x,a)') "Writing 'tb_anc' class"
++   write(iunit,'(1x,"*",1x,a)') "Writing 'optimizer' class"
+    write(iunit,'(  "->",1x,a)') comment
+    write(iunit,'(72("-"))')
+    write(iunit,'(1x,"*",1x,a)') "status of the fields"
+@@ -130,10 +137,12 @@
+    endif
+    write(iunit,'(72("<"))')
+ end subroutine write_anc
++
+ !========================================================================================!
++
+ subroutine generate_anc_blowup(self,xyz,hess,pr,linear,fail)
+    implicit none
+-   class(tb_anc),intent(inout) :: self
++   class(optimizer),intent(inout) :: self
+    real(wp),     intent(in)    :: xyz(3,self%n)
+    real(wp),     intent(inout) :: hess(self%n3,self%n3)
+    logical,      intent(in)    :: pr
+@@ -223,10 +232,12 @@
+    self%coord = 0.0_wp
+    return
+ end subroutine generate_anc_blowup
++
+ !========================================================================================!
++
+ subroutine generate_anc_packed(self,xyz,hess,pr,fail)
+    implicit none
+-   class(tb_anc),intent(inout) :: self
++   class(optimizer),intent(inout) :: self
+    real(wp),     intent(in)    :: xyz(3,self%n)
+    real(wp),     intent(inout) :: hess(self%n3*(self%n3+1)/2)
+    logical,      intent(in)    :: pr
+@@ -317,7 +328,9 @@
+    self%coord = 0.0_wp
+    return
+ end subroutine generate_anc_packed
++
+ !========================================================================================!
++
+ pure subroutine sort(nat3,nvar,hess,b)
+    implicit none
+    integer :: ii,k,j,m,i
+@@ -356,10 +369,12 @@
+    enddo
+    return
+ end subroutine sort
++
+ !========================================================================================!
++
+ subroutine get_cartesian(self,xyz)
+    implicit none
+-   class(tb_anc),intent(in) :: self
++   class(optimizer),intent(in) :: self
+    integer :: m,i,j,k
+    real(wp),intent(out) :: xyz (3,self%n)
+    real(wp) :: dum
+@@ -369,5 +384,7 @@
+    call dgemv('n',self%n3,self%nvar,1.0_wp,self%B,self%n3,self%coord,1,1.0_wp,xyz,1)
+    return
+ end subroutine get_cartesian
++
+ !========================================================================================!
+-end module type_anc
++!========================================================================================!
++end module optimize_type
+Index: src/zsort.f90
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/zsort.f90 b/src/legacy_algos/zsort.f90
+rename from src/zsort.f90
+rename to src/legacy_algos/zsort.f90
+--- a/src/zsort.f90	
++++ b/src/legacy_algos/zsort.f90	
+@@ -19,6 +19,7 @@
+ subroutine zsort  
+       use iomod
+       use strucrd, only: rdnat,rdcoord,wrc0
++      use miscdata, only: rcov
+       implicit none
+       integer n
+       real*8,allocatable::xyz(:,:)                             ! comment out if subroutine
+@@ -28,24 +29,23 @@
+       integer,allocatable::nat_mols(:),mvec(:),itmp(:),atnew(:)        
+       integer,allocatable::na(:),nb(:),nc(:),at(:)             ! comment out if subroutine
+       integer,allocatable::tmpna(:),tmpnb(:),tmpnc(:)          
+-      real*8,allocatable :: rcov(:),xx(:)     
++      real*8,allocatable :: xx(:)     
+ 
+       integer :: i,j,k,nn,nmol,refmol
+       integer :: zmatcnt,zmatstart
+ 
+       logical ex
+ 
+-!      write(*,*)
+-!      write(*,'(7x,''========================================'')')
+-!      write(*,'(7x,''|             Z S O R T                |'')')
+-!      write(*,'(7x,''|JS, Universitaet Bonn, MCTC, 05/2017  |'')')
+-!      write(*,'(7x,''========================================'')')
+-!      write(*,*)'input on file coord, Z matrix on file zmatrix'
+-!      write(*,*)'sorted coord on file zcoord'
++      write(*,*)
++      write(*,'(7x,''========================================'')')
++      write(*,'(7x,''|             Z S O R T                |'')')
++      write(*,'(7x,''|JS, Universitaet Bonn, MCTC, 05/2017  |'')')
++      write(*,'(7x,''========================================'')')
++      write(*,*)'input on file coord, Z matrix on file zmatrix'
++      write(*,*)'sorted coord on file zcoord'
+ 
+-  allocate (xx(10),rcov(94))
++  allocate (xx(10))
+ 
+-  call setrcov(rcov) ! for CN calc
+   inquire (file='coord',exist=ex) ! comment out if subroutine
+   if (.not. ex) stop 'ERROR: no coord file in folder!' ! comment out if subroutine
+ 
+@@ -158,7 +158,7 @@
+ 
+   deallocate (xyz,at,mvec,xyznew,atnew,geo,na,nb,nc,nat_mols)
+ !     deallocate(mvec,xyznew,atnew,nat_mols) if subroutine
+-  deallocate (rcov,xx)
++  deallocate (xx)
+ 
+ end subroutine zsort
+ 
+Index: src/algos/search_imtdgc.f90
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/algos/search_imtdgc.f90 b/src/algos/search_conformers.f90
+rename from src/algos/search_imtdgc.f90
+rename to src/algos/search_conformers.f90
+--- a/src/algos/search_imtdgc.f90	
++++ b/src/algos/search_conformers.f90	
+@@ -32,6 +32,7 @@
+   use dynamics_module
+   use shake_module
+   use iomod
++  use utilities
+   implicit none
+   type(systemdata),intent(inout) :: env
+   type(timer),intent(inout)      :: tim
+@@ -79,7 +80,7 @@
+ 
+   if (env%performMTD) then
+ !>--- (optional) calculate a short 1ps test MTD to check settings
+-   call tim%start(1,'trial metadynamics (MTD)')
++   call tim%start(1,'Trial metadynamics (MTD)')
+    call trialmd(env)  
+    call tim%stop(1)
+   end if
+@@ -123,7 +124,7 @@
+ !==========================================================!
+ !>--- Reoptimization of trajectories
+     call tim%start(3,'Geometry optimization')
+-    multilevel = (/.true.,.false.,.false.,.false.,.true.,.false./)
++    call optlev_to_multilev(env%optlev,multilevel)
+     call crest_multilevel_oloop(env,ensnam,multilevel)
+     call tim%stop(3)
+ 
+@@ -185,10 +186,7 @@
+     ensnam = 'crest_dynamics.trj'
+     call appendto(ensnam,trim(atmp))
+     call tim%start(3,'Geometry optimization')
+-    !multilevel = .false.
+-    !multilevel(5) = .true.
+-    !call crest_multilevel_oloop(env,trim(atmp),multilevel)
+-    call crest_multilevel_wrap(env,trim(atmp),5)
++    call crest_multilevel_wrap(env,trim(atmp),-1)
+     call tim%stop(3)
+ 
+     call elowcheck(lower,env)
+@@ -269,11 +267,13 @@
+   integer :: k
+   multilevel = .false.
+   select case(level)
+-  case( 1:6 )
+-    multilevel(level) =.true.
+-  case default
+-  !>-- map global variable to multilevel selection
+-    k = optlevmap_alt(env%optlev) 
++  case( 1: ) !> explicit selection (level is a positie integer)
++    k = min(level,6) 
++    multilevel(k) =.true.
++  case default 
++  !>-- map global variable to multilevel selection (level is 0 or negative)
++    k = optlevmap_alt(env%optlev) + level
++    k = max(1,k)
+     multilevel(k) =.true.
+   end select
+   call crest_multilevel_oloop(env,ensnam,multilevel)
+@@ -290,6 +290,9 @@
+   use crest_data
+   use crest_calculator
+   use strucrd
++  use optimize_module
++  use utilities
++  use crest_restartlog
+   implicit none
+   type(systemdata) :: env 
+   character(len=*),intent(in) :: ensnam
+@@ -306,6 +309,16 @@
+   integer :: microbackup
+   integer :: optlevelbackup
+ 
++  interface 
++    subroutine crest_refine(env,input,output)
++      use crest_data
++      implicit none
++      type(systemdata),intent(inout) :: env
++      character(len=*),intent(in) :: input
++      character(len=*),intent(in),optional :: output
++    end subroutine crest_refine
++  end interface
++
+ !>--- save backup thresholds
+   ewinbackup     = env%ewin
+   rthrbackup     = env%rthr
+@@ -322,7 +335,7 @@
+   write(stdout,'(1x,a)') '|  Multilevel Ensemble Optimization  |'
+   write(stdout,'(1x,a)') '======================================'
+   endif
+-
++  
+ !>--- read ensemble
+   call rdensembleparam(ensnam,nat,nall)
+   if (nall .lt. 1) then
+@@ -331,6 +344,8 @@
+   endif
+   allocate (xyz(3,nat,nall),at(nat),eread(nall))
+   call rdensemble(ensnam,nat,nall,at,xyz,eread)
++!>--- track ensemble for restart
++  call trackensemble(ensnam,nat,nall,at,xyz,eread)
+ !>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<!
+ !>--- Important: crest_oloop requires coordinates in Bohrs
+   xyz = xyz / bohr
+@@ -349,18 +364,33 @@
+        call set_multilevel_options(env,i,.true.)
+      !>--- run parallel optimizations
+        call crest_oloop(env,nat,nall,at,xyz,eread,dump)
++       deallocate(eread,at,xyz)
+      !>--- rename ensemble and sort
+        call checkname_xyz(crefile,inpnam,outnam)
+        call rename(ensemblefile,trim(inpnam))
++     !>--- check for empty ensemble content
++       call rdensembleparam(trim(inpnam),nat,nall)
++       if (nall .lt. 1) then
++         write(stdout,*) 'empty ensemble file',trim(inpnam)
++         stop
++       endif
++
++       write(stdout,*)
++     !==========================================================!
++     !>-- dedicated ensemble refinement step (overwrites inpnam)
++      call  crest_refine(env,trim(inpnam))
++     !==========================================================!
++
++     !>--- CREGEN sorting
+        call sort_and_check(env,trim(inpnam))
+        call checkname_xyz(crefile,inpnam,outnam)
+-     !>--- read new ensemble for next iteration
+-       deallocate(eread,at,xyz)
++     !>--- check for empty ensemble content (again)
+        call rdensembleparam(trim(inpnam),nat,nall)
+        if (nall .lt. 1) then
+          write(stdout,*) 'empty ensemble file',trim(inpnam)
+          stop
+        endif
++     !>--- read new ensemble for next iteration
+        allocate (xyz(3,nat,nall),at(nat),eread(nall))
+        call rdensemble(trim(inpnam),nat,nall,at,xyz,eread)
+      !>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<!
+@@ -422,6 +452,8 @@
+      env%calc%optlev = 0
+     end select
+ 
++    call print_opt_data(env%calc, stdout)
++
+   end subroutine set_multilevel_options
+ end subroutine crest_multilevel_oloop
+ 
+@@ -524,6 +556,7 @@
+   use crest_parameters
+   use crest_data
+   use iomod
++  use utilities
+   implicit none
+   type(systemdata) :: env  
+   real(wp) :: ewinbackup
+@@ -559,8 +592,7 @@
+ 
+ !>-- optimize ensemble
+     if (env%gcmultiopt) then !>-- optionally split into two steps
+-      multilevel(3) = .true.
+-      multilevel(5) = .true.
++      call optlev_to_multilev(env%optlev,multilevel)
+     else
+       multilevel(4) = .true.
+     end if
+diff --git a/src/data.f90 b/src/deprecated/data.f90
+rename from src/data.f90
+rename to src/deprecated/data.f90

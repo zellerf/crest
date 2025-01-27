@@ -266,6 +266,9 @@ contains !> MODULE PROCEDURES START HERE
     case ('gradfile')
       job%gradfile = kv%value_c
 
+    case ('pressure_model')
+      job%pmodel = val
+
     case ('gradtype')
       select case (kv%value_c)
       case ('engrad','xtb','orca')

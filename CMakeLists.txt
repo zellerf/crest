@@ -38,6 +38,11 @@ include(GNUInstallDirs)
 add_subdirectory("config")
 
 
+#
+# Libraries
+#
+
+
 ###############################################################################
 ####################### SUBPROJECTS & DEPENDENCIES ############################
 ###############################################################################
@@ -114,6 +119,31 @@ if(NOT TARGET "lwoniom::lwoniom" AND WITH_LWONIOM)
    add_compile_definitions(WITH_LWONIOM)
 endif()
 
+if(WITH_TBLITE)
+  find_package("tblite" REQUIRED)
+  add_definitions(-DWITH_TBLITE)
+  list(
+    APPEND libs
+    tblite::tblite
+  )
+endif()
+
+# XHCFF
+if(WITH_XHCFF)
+  find_package("xhcff" REQUIRED)
+  add_definitions(-DWITH_XHCFF)
+  list(
+    APPEND libs
+    xhcff::xhcff
+  )
+endif()
+
+
+
+
+#
+# CREST sources
+#
 # Sources: initialize program sources (prog) and library sources (srcs) empty
 set(prog)
 set(srcs)

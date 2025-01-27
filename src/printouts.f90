@@ -67,6 +67,9 @@ subroutine confscript_head(vers)
   write (*,'(3x,a)') 'Online documentation is available at'
   write (*,'(3x,a)') 'https://crest-lab.github.io/crest-docs/'
   write (*,*)
+  write (*,'(3x,a)') 'Online documentation is available at'
+  write (*,'(3x,a)') 'https://crest-lab.github.io/crest-docs/'
+  write (*,*)
 
   call disclaimer()
 end subroutine confscript_head

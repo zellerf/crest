@@ -21,19 +21,20 @@ module xhcff_api
   use iso_fortran_env,only:wp => real64,stdout => output_unit
   use strucrd
 #ifdef WITH_XHCFF
-  use xhcff_interface
+  use xhcfflib_interface
 #endif
   implicit none
   private
 
 #ifndef WITH_XHCFF
+  write(*,*) 'with placeholder'
   !> this is a placeholder if no xhcff module is used!
-  type :: xhcff_calculator
+  type :: xhcfflib_calculator
     integer :: id = 0
-  end type xhcff_calculator
+  end type xhcfflib_calculator
 #endif
 
-  public :: xhcff_calculator  !> if compiled without(!!!) -DWITH_XHCFF=true this will export
+  public :: xhcfflib_calculator  !> if compiled without(!!!) -DWITH_XHCFF=true this will export
                         !> the placeholder from above. Otherwise it will re-export
                         !> the type from xhcff_interface
 
@@ -46,21 +47,24 @@ contains  !>--- Module routines start here
 !========================================================================================!
 !========================================================================================!
 
-  subroutine xhcff_setup(mol, xhcff, pressure, gridpts, proberad, vdwset, pr, iunit, iostatus)
+  subroutine xhcff_setup(mol, xhcff, pressure, model, gridpts, proberad, scaling, vdwset, pr, plvl, iunit, iostatus)
     implicit none
     type(coord),intent(in)  :: mol
-    real(wp), intent(in) :: pressure !> pressure
+    real(wp), intent(in) :: pressure !> pressure in gpa
+    character(len=*), intent(in) :: model !> pressure model 
     integer, intent(in) :: gridpts
-    real(wp), intent(in) :: proberad
-    integer, intent(in) :: vdwset
-    type(xhcff_calculator),intent(inout) :: xhcff
+    real(wp), intent(in) :: proberad !> proberadius to model sas in Angstrom
+    real(wp), intent(in) :: scaling !> scale vdw radii
+    integer, intent(in) :: vdwset !> choose vdwset for surface calculation
+    type(xhcfflib_calculator),intent(inout) :: xhcff
     integer, intent(inout) :: iostatus
     logical, intent(in) :: pr
+    integer, intent(in) :: plvl !> printlvl
     integer,intent(in) :: iunit
 #ifdef WITH_XHCFF
-    !> initialize XHCFF
+    !> initialize XHCFFA
     call xhcff%init(mol%nat,mol%at,mol%xyz, &
-     & pressure, gridpts, proberad, verbose=pr,iunit=iunit,vdwset=vdwset,iostat=iostatus)
+     & pressure, model, gridpts, proberad, printlevel=plvl, scaling=scaling, verbose=pr,iunit=iunit,vdwset=vdwset,iostat=iostatus)
 
 #else /* WITH_XHCFF */
     write (stdout,*) 'Error: Compiled without XHCFF-lib support!'
@@ -81,7 +85,7 @@ contains  !>--- Module routines start here
     implicit none
     !> INPUT
     type(coord),intent(in)  :: mol
-    type(xhcff_calculator),intent(inout) :: xhcff
+    type(xhcfflib_calculator),intent(inout) :: xhcff
     !> OUTPUT
     real(wp),intent(out) :: energy
     real(wp),intent(out) :: gradient(3,mol%nat)
@@ -107,7 +111,7 @@ contains  !>--- Module routines start here
   subroutine xhcff_print(iunit,xhcff)
     implicit none
     integer,intent(in) :: iunit
-    type(xhcff_calculator),intent(in) :: xhcff
+    type(xhcfflib_calculator),intent(in) :: xhcff
 #ifdef WITH_XHCFF
     call xhcff%info(iunit)
 #endif

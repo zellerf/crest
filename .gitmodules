@@ -6,10 +6,6 @@
 	path = subprojects/toml-f
 	url = https://github.com/toml-f/toml-f.git
     branch = main
-[submodule "subprojects/gfnff"]
-	path = subprojects/gfnff
-	url = https://github.com/pprcht/gfnff.git
-    branch = master 
 [submodule "subprojects/lwoniom"]
 	path = subprojects/lwoniom
 	url = https://github.com/crest-lab/lwoniom
